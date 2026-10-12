@@ -1,6 +1,6 @@
 # devbox — Phase 1 Design: Maintainer Queue Core
 
-- **Status:** Draft for review
+- **Status:** Approved
 - **Date:** 2026-10-12
 - **Module:** `github.com/thingzio/devbox`
 - **Scope:** Phase 1 of 4 (see [Roadmap](#roadmap-out-of-scope))
@@ -239,7 +239,10 @@ Normalization (from the detail node):
   embedded commit dates. First observation alone is not evidence of a new
   push. `Record` retains `head_changed_at` separately so classification can
   identify unknown historical push activity. A changed review diff
-  independently requires re-review (see §5.3).
+  independently requires re-review (see §5.3). Accepted consequence: head
+  changes pushed by the viewer (Update branch, `serial-auto-merge`, fixup
+  commits) also count as author activity and reset stale-changes-requested
+  timing. This errs toward fewer nudges and avoids trusting commit metadata.
 - `head_activity_at` = `head_changed_at` if set; otherwise the head commit's
   `committedDate`, clamped so it does not precede `createdAt`. Commit dates are
   author-controlled, so the fallback applies only until sync observes a head
@@ -420,7 +423,8 @@ Appended to rule-specific notes: "approved by @x" / "changes requested by @x"
 for others' decisive reviews; "branch updated, diff unchanged" when baseline
 commit ≠ head and `diff_changed` is false; "non-required checks failing" when
 merge state is `UNSTABLE`; field-specific messages from `Record.EvidenceErrors`,
-including whether a retry is pending.
+including whether a retry is pending; "evidence stale since <time>, retrying:
+<message>" when `Record.CoreRetry` is set.
 
 ### 5.7 Handoff lines
 
@@ -627,9 +631,19 @@ Enrichment scheduling and outcomes:
   fatal error. Optional evidence errors preserve conservative classification;
   retryable ones retain a retry deadline. An outcome without retryable failures
   clears `enrich_failures` and `retry_at`, including permission-related unknown
-  fields with documented fallbacks. A fatal failure writes an error record
-  carrying the current record version and collection-rules hash, plus an
-  `unclassified` result, but leaves `record_at` unchanged.
+  fields with documented fallbacks.
+- Retryable fatal failure with a usable prior record (current record version
+  and collection-rules hash, and `record_at` within the last 30 minutes): keep
+  that record's evidence and set its `CoreRetry {message, since}`. The bucket
+  stays unchanged, so no transition is written; the result gains the stale note
+  (§5.6), and `record_at` is unchanged. Once `CoreRetry.since` (or `record_at`)
+  is more than 30 minutes old, the next outcome falls through to the case
+  below, so stale evidence never drives actions indefinitely. The next
+  successful enrichment clears `CoreRetry`.
+- Any other fatal failure (non-retryable, no usable prior record, or the
+  30-minute bound exceeded) writes an error record carrying the current record
+  version and collection-rules hash, plus an `unclassified` result, and leaves
+  `record_at` unchanged.
 
 Commit conditions and lifecycle:
 
@@ -785,7 +799,7 @@ The separately opt-in live test below is excluded from normal targets and CI.
 | `github` | `httptest`: retries and backoff (injected sleep), `Retry-After`, rate-limit parsing, GraphQL `errors` → failure, mutation refusal, SSO and OAuth-restriction 403 typing, diff media type. |
 | `auth` | Fake device-flow server for pending, slow_down, expired, denied, success; PAT validation (fine-grained rejection, missing scope); in-memory `Secrets`. |
 | `store` | Real SQLite in `t.TempDir()`: migrations, transition-on-bucket-change only, close handling, cache semantics and cascading deletion, remove/re-add without reused IDs or inherited policy, retention purge, rules validation/invalidation, atomic revision guards on evidence/results/transitions/cache writes. |
-| `sync` | Fake GitHub source + real store + fake clock: changed PR enrichment (call counts), base advancement changing the effective diff with unchanged head/merge state, observed head changes independent of commit identity/date, safety reconcile cap, failed-record retries with unchanged fingerprint and restart recovery, success vs attempt timestamps, immediate rule invalidation, close/reopen, stale reclassification after newer enrichment, late completion after close/disable/delete, detail/fingerprint mismatch commits the detail as an observation and re-dispatches once (no repeated detail reads before the next poll), disabled repos hidden from queue and metrics, rate-limit/needs_auth pauses, clean shutdown. |
+| `sync` | Fake GitHub source + real store + fake clock: changed PR enrichment (call counts), base advancement changing the effective diff with unchanged head/merge state, observed head changes independent of commit identity/date, safety reconcile cap, failed-record retries with unchanged fingerprint and restart recovery, success vs attempt timestamps, immediate rule invalidation, close/reopen, stale reclassification after newer enrichment, late completion after close/disable/delete, detail/fingerprint mismatch commits the detail as an observation and re-dispatches once (no repeated detail reads before the next poll), retryable fatal failure keeps the last good result with a stale note and no transition until the 30-minute bound then falls to `unclassified`, disabled repos hidden from queue and metrics, rate-limit/needs_auth pauses, clean shutdown. |
 | `web` | `httptest`: hostile titles escaped, non-GitHub links not rendered, Host and Origin enforcement, security headers, SSE publish delivery, settings validation errors. |
 | e2e | `devbox serve` against a fake GitHub (hidden URL flags): add PAT account → add repo → poll → `/` shows expected rows. |
 | live | Opt-in `DEVBOX_LIVE_TEST=1`, read-only against a public repo; never in CI. |
