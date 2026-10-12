@@ -3,9 +3,10 @@
 {{if .Error}}<p class="banner warn" role="alert">{{.Error}}</p>{{end}}
 
 <section id="accounts"><h2>Accounts</h2>
-{{if .Accounts}}<table><thead><tr><th>Account</th><th>Kind</th><th>Scopes</th><th>Status</th><th></th></tr></thead><tbody>
+{{if .Accounts}}<table><thead><tr><th>Account</th><th>Kind</th><th>Scopes</th><th>Status</th><th>Rate remaining</th><th></th></tr></thead><tbody>
 {{range .Accounts}}<tr><td>@{{.Login}}</td><td>{{.Kind}}</td><td>{{.Scopes}}</td>
 <td>{{.Status}}{{if .Detail}}: {{.Detail}}{{end}}{{if .PausedUntil}} (rate-limit pause until {{.PausedUntil}}){{end}}</td>
+<td>{{if .Rates}}{{.Rates}}{{else}}not polled yet{{end}}</td>
 <td><form method="post" action="/accounts/{{.Login}}/delete" class="inline"><button type="submit">Remove</button></form>
 <a href="https://github.com/settings/applications">Revoke on GitHub</a></td></tr>{{end}}
 </tbody></table>{{else}}<p>No accounts yet.</p>{{end}}

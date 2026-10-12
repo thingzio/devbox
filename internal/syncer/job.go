@@ -14,9 +14,10 @@ import (
 )
 
 // DispatchDue starts enrichment for due work, at most one job per PR and
-// Workers per account; paused accounts wait (§7).
+// Workers per account. Paused accounts are left out of the query so their
+// backlog cannot crowd out other accounts' work (§7).
 func (e *Engine) DispatchDue(ctx context.Context) (int, error) {
-	works, err := e.d.Store.DueWork(ctx, e.now(), dispatchBatch)
+	works, err := e.d.Store.DueWork(ctx, e.now(), dispatchBatch, e.pausedAccounts())
 	if err != nil {
 		return 0, err
 	}

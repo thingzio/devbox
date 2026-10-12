@@ -29,6 +29,17 @@ func (s *Server) settingsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /import", s.handleImport)
 }
 
+// reservedOwners are github.com top-level paths that can never be a user or
+// organization, so a pasted URL under them is not a repository.
+var reservedOwners = map[string]bool{
+	"about": true, "apps": true, "collections": true, "contact": true, "customer-stories": true,
+	"enterprise": true, "enterprises": true, "events": true, "explore": true, "features": true,
+	"issues": true, "login": true, "logout": true, "marketplace": true, "new": true,
+	"notifications": true, "organizations": true, "orgs": true, "pricing": true, "pulls": true,
+	"readme": true, "search": true, "security": true, "sessions": true, "settings": true,
+	"site": true, "sponsors": true, "team": true, "topics": true, "trending": true, "users": true,
+}
+
 var (
 	ownerPattern  = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]{0,38}$`)
 	namePattern   = regexp.MustCompile(`^[A-Za-z0-9._-]{1,100}$`)
@@ -55,6 +66,9 @@ func parseRepoReference(input string) (string, string, error) {
 		return "", "", fmt.Errorf("%q is not owner/name", input)
 	}
 	owner, name := parts[0], strings.TrimSuffix(parts[1], ".git")
+	if reservedOwners[strings.ToLower(owner)] {
+		return "", "", fmt.Errorf("%q is a GitHub %s page, not a repository", input, owner)
+	}
 	if !ownerPattern.MatchString(owner) || !namePattern.MatchString(name) || name == "." || name == ".." {
 		return "", "", fmt.Errorf("%q is not a valid owner/name", input)
 	}
@@ -62,7 +76,7 @@ func parseRepoReference(input string) (string, string, error) {
 }
 
 type accountView struct {
-	Login, Kind, Scopes, Status, Detail, PausedUntil string
+	Login, Kind, Scopes, Status, Detail, PausedUntil, Rates string
 }
 
 type repoSettingsView struct {
@@ -92,14 +106,22 @@ func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
 		return v, err
 	}
 	paused := map[string]string{}
+	rates := map[string]string{}
 	if s.o.Engine != nil {
 		for account, until := range s.o.Engine.RateStatus() {
 			paused[account] = until.In(s.o.Location).Format("15:04")
 		}
+		for account, readings := range s.o.Engine.RateLimits() {
+			parts := make([]string, 0, len(readings))
+			for _, r := range readings {
+				parts = append(parts, fmt.Sprintf("%s %d/%d", r.Resource, r.Remaining, r.Limit))
+			}
+			rates[account] = strings.Join(parts, ", ")
+		}
 	}
 	for _, a := range accounts {
 		v.Accounts = append(v.Accounts, accountView{Login: a.Login, Kind: a.Kind, Scopes: strings.Join(a.Scopes, ", "),
-			Status: a.Status, Detail: a.StatusDetail, PausedUntil: paused[a.Login]})
+			Status: a.Status, Detail: a.StatusDetail, PausedUntil: paused[a.Login], Rates: rates[a.Login]})
 		v.AccountLogins = append(v.AccountLogins, a.Login)
 	}
 	statuses, err := s.o.Store.RepoStatuses(ctx)

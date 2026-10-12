@@ -242,17 +242,17 @@ func TestDueWork(t *testing.T) {
 	if _, err := db.SetRepoEnabled(ctx, off.ID, false); err != nil {
 		t.Fatal(err)
 	}
-	work, err := db.DueWork(ctx, at(0), 10)
+	work, err := db.DueWork(ctx, at(0), 10, nil)
 	if err != nil || len(work) != 2 || work[0].Number != 7 || work[0].Account != "me" || work[0].Fingerprint != "fp1" || work[0].PRRevision != 1 {
 		t.Fatalf("DueWork = %+v, %v", work, err)
 	}
-	if work, _ := db.DueWork(ctx, at(0).Add(-time.Minute), 10); len(work) != 0 {
+	if work, _ := db.DueWork(ctx, at(0).Add(-time.Minute), 10, nil); len(work) != 0 {
 		t.Fatalf("future work returned: %+v", work)
 	}
 	if err := db.SetAccountStatus(ctx, "me", StatusNeedsAuth, "x"); err != nil {
 		t.Fatal(err)
 	}
-	if work, _ := db.DueWork(ctx, at(0), 10); len(work) != 0 {
+	if work, _ := db.DueWork(ctx, at(0), 10, nil); len(work) != 0 {
 		t.Fatalf("needs_auth account work returned: %+v", work)
 	}
 }
@@ -348,5 +348,28 @@ func TestCachesPurgeAndCascade(t *testing.T) {
 	var n int
 	if err := db.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM cache_policy`).Scan(&n); err != nil || n != 0 {
 		t.Fatalf("cache_policy rows after delete = %d, %v", n, err)
+	}
+}
+
+func TestDueWorkIsFairAcrossAccountsAndSkipsPaused(t *testing.T) {
+	ctx := context.Background()
+	db := openTest(t)
+	me, work := mustAccount(t, db, "me"), mustAccount(t, db, "work")
+	observeNew(t, db, mustRepo(t, db, me, "o", "busy"), at(0), 1, 2, 3)
+	observeNew(t, db, mustRepo(t, db, work, "o", "quiet"), at(1), 9)
+	due, err := db.DueWork(ctx, at(2), 2, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	perAccount := map[string]int{}
+	for _, w := range due {
+		perAccount[w.Account]++
+	}
+	if perAccount["me"] != 2 || perAccount["work"] != 1 {
+		t.Fatalf("per-account limit not applied: %v", perAccount)
+	}
+	due, err = db.DueWork(ctx, at(2), 10, []string{"me"})
+	if err != nil || len(due) != 1 || due[0].Account != "work" || due[0].Number != 9 {
+		t.Fatalf("paused account not skipped: %+v, %v", due, err)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/thingzio/devbox/internal/auth"
+	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/store"
 )
@@ -30,6 +31,7 @@ type Engine interface {
 	ReposChanged()
 	RulesChanged(ctx context.Context, repoID int64, collectionChanged bool) error
 	RateStatus() map[string]time.Time
+	RateLimits() map[string][]github.Rate
 }
 
 // Options configures the server.

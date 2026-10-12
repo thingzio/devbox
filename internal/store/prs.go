@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/thingzio/devbox/internal/classify"
@@ -288,13 +289,31 @@ WHERE repo_id = ? RETURNING last_poll_at, last_success_at, COALESCE(last_error, 
 	return s, nil
 }
 
-// DueWork lists open PRs in enabled repos of ok accounts whose retry deadline has passed.
-func (db *DB) DueWork(ctx context.Context, now time.Time, limit int) ([]Work, error) {
-	rows, err := db.r.QueryContext(ctx, `SELECT p.repo_id, r.revision, a.login, r.owner, r.name, r.rules, p.number, p.revision,
-  COALESCE(p.fingerprint, ''), p.head_changed_at, p.record_at, p.record, p.enrich_failures
-FROM prs p JOIN repos r ON r.id = p.repo_id JOIN accounts a ON a.id = r.account_id
-WHERE p.state = 'open' AND r.enabled = 1 AND a.status = 'ok' AND p.retry_at IS NOT NULL AND p.retry_at <= ?
-ORDER BY p.retry_at, p.repo_id, p.number LIMIT ?`, ms(now), limit)
+// DueWork lists due open PRs in enabled repos of ok accounts, oldest first and
+// at most perAccount per account, so one account's backlog cannot crowd out
+// another's. Accounts in skip (paused for rate limits) are excluded.
+func (db *DB) DueWork(ctx context.Context, now time.Time, perAccount int, skip []string) ([]Work, error) {
+	args := []any{ms(now)}
+	exclude := ""
+	if len(skip) > 0 {
+		exclude = " AND a.login NOT IN (" + strings.TrimSuffix(strings.Repeat("?, ", len(skip)), ", ") + ")"
+		for _, login := range skip {
+			args = append(args, login)
+		}
+	}
+	args = append(args, perAccount)
+	query := `SELECT repo_id, repo_revision, login, owner, name, rules, number, pr_revision,
+  fingerprint, head_changed_at, record_at, record, enrich_failures
+FROM (
+  SELECT p.repo_id, r.revision AS repo_revision, a.login, r.owner, r.name, r.rules, p.number, p.revision AS pr_revision,
+    COALESCE(p.fingerprint, '') AS fingerprint, p.head_changed_at, p.record_at, p.record, p.enrich_failures, p.retry_at,
+    ROW_NUMBER() OVER (PARTITION BY a.id ORDER BY p.retry_at, p.repo_id, p.number) AS rank_in_account
+  FROM prs p JOIN repos r ON r.id = p.repo_id JOIN accounts a ON a.id = r.account_id
+  WHERE p.state = 'open' AND r.enabled = 1 AND a.status = 'ok' AND p.retry_at IS NOT NULL AND p.retry_at <= ?` + exclude + `
+)
+WHERE rank_in_account <= ?
+ORDER BY retry_at, repo_id, number`
+	rows, err := db.r.QueryContext(ctx, query, args...) //nolint:gosec // only "?" placeholders are concatenated
 	if err != nil {
 		return nil, fmt.Errorf("store: due work: %w", err)
 	}

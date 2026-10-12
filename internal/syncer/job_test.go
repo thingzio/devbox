@@ -400,3 +400,33 @@ func TestRetryDelay(t *testing.T) {
 		}
 	}
 }
+
+func TestPausedAccountDoesNotStarveOthers(t *testing.T) {
+	en := newEnv(t, Config{})
+	var backlog []collect.Observed
+	for i := 1; i <= dispatchBatch+1; i++ {
+		backlog = append(backlog, obs(i, "a"))
+	}
+	en.src.set(func(f *fakeSource) { f.observed = backlog })
+	en.mustPoll()
+	work, err := en.db.UpsertAccount(en.ctx, "work", "oauth", []string{"repo"}, t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := en.db.AddRepo(en.ctx, work.ID, "o", "r2", rules.Default(), t0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	en.clock.Advance(time.Minute)
+	en.src.set(func(f *fakeSource) { f.observed = []collect.Observed{obs(1, "w")} })
+	if _, err := en.eng.PollRepo(en.ctx, other.ID); err != nil {
+		t.Fatal(err)
+	}
+	en.eng.ObserveRate("me", github.Rate{Resource: "graphql", Limit: 5000, Remaining: 10, Reset: en.clock.Now().Add(time.Hour)})
+	if started := en.dispatch(); started != 1 {
+		t.Fatalf("started %d jobs; the unpaused account's due PR must dispatch despite the paused account's backlog", started)
+	}
+	if in := en.src.inputs[len(en.src.inputs)-1]; in.RepoID != other.ID || in.Viewer != "work" {
+		t.Fatalf("dispatched %+v, want the work account's PR", in)
+	}
+}

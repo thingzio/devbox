@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/rules"
 )
@@ -202,3 +203,37 @@ func TestImportFlow(t *testing.T) {
 }
 
 func itoa(n int64) string { return strconv.FormatInt(n, 10) }
+
+func TestParseRepoReferenceRejectsReservedPaths(t *testing.T) {
+	for _, in := range []string{
+		"https://github.com/orgs/NVIDIA/repositories",
+		"github.com/settings/tokens",
+		"https://github.com/users/mchmarny/projects",
+		"https://github.com/topics/kubernetes",
+		"https://github.com/search/code",
+		"https://github.com/notifications/beta",
+		"https://github.com/marketplace/actions",
+		"https://github.com/sponsors/someone",
+		"https://github.com/apps/dependabot",
+		"https://github.com/enterprises/acme",
+	} {
+		if owner, name, err := parseRepoReference(in); err == nil {
+			t.Errorf("parseRepoReference(%q) = %s/%s, want error for a reserved GitHub path", in, owner, name)
+		}
+	}
+}
+
+func TestSettingsShowsRateRemaining(t *testing.T) {
+	ts := newTestServer(t)
+	ts.account("me")
+	ts.engine.mu.Lock()
+	ts.engine.rates = map[string][]github.Rate{"me": {
+		{Resource: "core", Limit: 5000, Remaining: 4990},
+		{Resource: "graphql", Limit: 5000, Remaining: 4812},
+	}}
+	ts.engine.mu.Unlock()
+	_, body := ts.get("/settings")
+	if !strings.Contains(body, "core 4990/5000, graphql 4812/5000") {
+		t.Fatalf("rate remaining missing from settings:\n%s", body)
+	}
+}

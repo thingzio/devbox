@@ -168,3 +168,16 @@ func TestObservedHeadChangeIsTimestampedByObservation(t *testing.T) {
 		t.Fatalf("head changed at = %v, want observation time", got)
 	}
 }
+
+func TestObserveRateKeepsLatestPerResource(t *testing.T) {
+	en := newEnv(t, Config{})
+	reset := t0.Add(time.Hour)
+	en.eng.ObserveRate("me", github.Rate{Resource: "core", Limit: 5000, Remaining: 4999, Reset: reset})
+	en.eng.ObserveRate("me", github.Rate{Resource: "graphql", Limit: 5000, Remaining: 4800, Reset: reset})
+	en.eng.ObserveRate("me", github.Rate{Resource: "core", Limit: 5000, Remaining: 4990, Reset: reset})
+	en.eng.ObserveRate("me", github.Rate{Limit: 60, Remaining: 59})
+	got := en.eng.RateLimits()["me"]
+	if len(got) != 2 || got[0].Resource != "core" || got[0].Remaining != 4990 || got[1].Resource != "graphql" || got[1].Remaining != 4800 {
+		t.Fatalf("RateLimits = %+v", got)
+	}
+}

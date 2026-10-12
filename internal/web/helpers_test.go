@@ -31,6 +31,7 @@ type fakeEngine struct {
 	reposChanged int
 	rulesCalls   []rulesCall
 	paused       map[string]time.Time
+	rates        map[string][]github.Rate
 }
 
 func (f *fakeEngine) ReposChanged() { f.mu.Lock(); f.reposChanged++; f.mu.Unlock() }
@@ -44,6 +45,11 @@ func (f *fakeEngine) RateStatus() map[string]time.Time {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.paused
+}
+func (f *fakeEngine) RateLimits() map[string][]github.Rate {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.rates
 }
 func (f *fakeEngine) reposChangedCount() int {
 	f.mu.Lock()

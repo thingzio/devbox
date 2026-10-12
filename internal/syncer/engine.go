@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"slices"
+	"strings"
 	gosync "sync"
 	"time"
 
@@ -71,6 +73,7 @@ type Engine struct {
 	jobs      map[prKey]context.CancelFunc
 	sems      map[string]chan struct{}
 	paused    map[string]time.Time
+	rates     map[string]map[string]github.Rate
 	reclassMu gosync.Mutex
 	wg        gosync.WaitGroup
 	wake      chan struct{}
@@ -112,7 +115,8 @@ func New(cfg Config, d Deps) *Engine {
 	return &Engine{
 		cfg: cfg, d: d,
 		jobs: map[prKey]context.CancelFunc{}, sems: map[string]chan struct{}{}, paused: map[string]time.Time{},
-		wake: make(chan struct{}, 1), resync: make(chan struct{}, 1),
+		rates: map[string]map[string]github.Rate{},
+		wake:  make(chan struct{}, 1), resync: make(chan struct{}, 1),
 	}
 }
 
@@ -135,6 +139,12 @@ func (e *Engine) Wait() { e.wg.Wait() }
 func (e *Engine) ObserveRate(account string, r github.Rate) {
 	if r.Resource != "" {
 		e.d.Metrics.RateRemaining.WithLabelValues(account, r.Resource).Set(float64(r.Remaining))
+		e.mu.Lock()
+		if e.rates[account] == nil {
+			e.rates[account] = map[string]github.Rate{}
+		}
+		e.rates[account][r.Resource] = r
+		e.mu.Unlock()
 	}
 	if r.Limit > 0 && r.Remaining*10 < r.Limit {
 		e.pauseUntil(account, r.Reset, fmt.Sprintf("%s rate limit low (%d of %d left)", r.Resource, r.Remaining, r.Limit))
@@ -169,6 +179,33 @@ func (e *Engine) isPaused(account string) bool {
 		return false
 	}
 	return true
+}
+
+// RateLimits returns each account's latest rate reading per resource, sorted by resource.
+func (e *Engine) RateLimits() map[string][]github.Rate {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make(map[string][]github.Rate, len(e.rates))
+	for account, byResource := range e.rates {
+		rates := make([]github.Rate, 0, len(byResource))
+		for _, r := range byResource {
+			rates = append(rates, r)
+		}
+		slices.SortFunc(rates, func(a, b github.Rate) int { return strings.Compare(a.Resource, b.Resource) })
+		out[account] = rates
+	}
+	return out
+}
+
+// pausedAccounts lists accounts currently paused for rate limits.
+func (e *Engine) pausedAccounts() []string {
+	paused := e.RateStatus()
+	out := make([]string, 0, len(paused))
+	for account := range paused {
+		out = append(out, account)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // RateStatus returns accounts paused for rate limits and when they resume.
