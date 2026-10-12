@@ -1,0 +1,4 @@
+# Single source of truth for toolchain versions (read by Makefile and CI).
+go: 1.27.2
+golangci-lint: v2.14.0
+govulncheck: v1.9.0

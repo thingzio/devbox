@@ -1,0 +1,28 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - errorlint
+    - gosec
+    - misspell
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+  settings:
+    gosec:
+      excludes:
+        - G115 # integer conversions are bounded by domain (PR numbers, counts)
+  exclusions:
+    presets:
+      - std-error-handling # unchecked Close/Flush/print errors
+    rules:
+      - path: _test\.go
+        linters: [bodyclose, gosec, noctx]
+formatters:
+  enable:
+    - gofmt
+    - goimports
