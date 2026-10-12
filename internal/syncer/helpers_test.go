@@ -77,6 +77,12 @@ func (f *fakeSource) set(update func(f *fakeSource)) {
 	update(f)
 }
 
+func (f *fakeSource) calls(number int) int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.collected[number]
+}
+
 func goodRecord(in collect.Input) classify.Record {
 	return classify.Record{
 		Version: classify.RecordVersion, CollectionRulesHash: in.Rules.CollectionHash(), Number: in.Number,
@@ -168,4 +174,13 @@ func (en *env) detail(number int) store.PRDetail {
 		en.t.Fatalf("PRDetails(%d) = %v, %v", number, d, err)
 	}
 	return d[0]
+}
+
+func (en *env) transitions(number int) []store.Transition {
+	en.t.Helper()
+	trs, err := en.db.Transitions(en.ctx, en.repo.ID, number)
+	if err != nil {
+		en.t.Fatal(err)
+	}
+	return trs
 }

@@ -65,15 +65,16 @@ type prKey struct {
 
 // Engine runs pollers, enrichment workers, and reclassification.
 type Engine struct {
-	cfg    Config
-	d      Deps
-	mu     gosync.Mutex
-	jobs   map[prKey]context.CancelFunc
-	sems   map[string]chan struct{}
-	paused map[string]time.Time
-	wg     gosync.WaitGroup
-	wake   chan struct{}
-	resync chan struct{}
+	cfg       Config
+	d         Deps
+	mu        gosync.Mutex
+	jobs      map[prKey]context.CancelFunc
+	sems      map[string]chan struct{}
+	paused    map[string]time.Time
+	reclassMu gosync.Mutex
+	wg        gosync.WaitGroup
+	wake      chan struct{}
+	resync    chan struct{}
 }
 
 // New returns an engine with defaults applied.
@@ -205,11 +206,57 @@ func (e *Engine) accountBlocked(ctx context.Context, account string, err error) 
 	return true
 }
 
+func (e *Engine) semaphore(account string) chan struct{} {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	sem, ok := e.sems[account]
+	if !ok {
+		sem = make(chan struct{}, e.cfg.Workers)
+		e.sems[account] = sem
+	}
+	return sem
+}
+
+func (e *Engine) reserve(ctx context.Context, k prKey) (context.Context, bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if _, busy := e.jobs[k]; busy {
+		return nil, false
+	}
+	jctx, cancel := context.WithCancel(ctx)
+	e.jobs[k] = cancel
+	return jctx, true
+}
+
+func (e *Engine) release(k prKey) {
+	e.mu.Lock()
+	cancel, ok := e.jobs[k]
+	delete(e.jobs, k)
+	e.mu.Unlock()
+	if ok {
+		cancel()
+	}
+}
+
 func (e *Engine) cancelJob(k prKey) {
 	e.mu.Lock()
 	cancel := e.jobs[k]
 	e.mu.Unlock()
 	if cancel != nil {
+		cancel()
+	}
+}
+
+func (e *Engine) cancelRepo(repoID int64) {
+	e.mu.Lock()
+	var cancels []context.CancelFunc
+	for k, cancel := range e.jobs {
+		if k.repoID == repoID {
+			cancels = append(cancels, cancel)
+		}
+	}
+	e.mu.Unlock()
+	for _, cancel := range cancels {
 		cancel()
 	}
 }
