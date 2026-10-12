@@ -54,7 +54,7 @@ later phases build on.
 | D5 | Fingerprint poll every 2m (configurable, min 60s); freshness target ≤ 3m | Cheap change detection, independent of watch settings and notifications |
 | D6 | Go classifier separate from the Python skill | Avoid parity burden now; revisit after real use |
 | D7 | Server-rendered `html/template` + htmx + SSE, embedded assets | No JS toolchain; one-language testing |
-| D8 | `modernc.org/sqlite`; `CGO_ENABLED=0` everywhere | Pure Go; clean cross-platform builds |
+| D8 | `modernc.org/sqlite`; `CGO_ENABLED=0` for production and cross builds; `CGO_ENABLED=1` for race tests | Pure-Go production binary; race detector can run in Linux CI |
 | D9 | Store normalized evidence (`Record`) per PR; classification is pure | Free reclassification; explainable rows |
 | D10 | Append-only `transitions` table | Phase 2 alerts and Phase 4 metrics without event sourcing |
 | D11 | No tracing; `--debug` enables maximal structured logging | Single local process; logs are the diagnostic tool |
@@ -94,9 +94,12 @@ every poll interval, per enabled repo:
     ├─ PRs missing from the open set ──▶ mark closed
     └─ PRs not enriched in the last 30m ──▶ enrichment pool (safety reconcile, staggered)
 
+independently: due failed or invalidated records ──▶ enrichment pool
+
   Record ──▶ classify.Classify ──▶ Result
-  store: one transaction — upsert prs.record + results; if bucket changed, append transitions row
-  hub.Publish(repo, number) ──▶ SSE ──▶ htmx swaps the row
+  store: one transaction — verify repo/PR revisions, upsert record + result + staged caches;
+         if bucket changed, append transitions row; discard obsolete work
+  hub.Publish(repo, number) ──▶ SSE ──▶ htmx refreshes the queue fragment
 
 every 5m: reclassify all stored open Records (no GitHub reads) — time-dependent rules
 ```
@@ -106,6 +109,11 @@ every 5m: reclassify all stored open Records (no GitHub reads) — time-dependen
 - One poller goroutine per enabled repository; repos are started and stopped
   when added, enabled, disabled, or removed.
 - One enrichment semaphore per account (default 4 in flight).
+- At most one queued or in-flight enrichment per PR. Work captures the repo
+  and PR revisions; every write checks them in the same transaction as the
+  update. Changed poll observations, lifecycle changes, and accepted enrichment
+  outcomes advance revisions; stale work cannot overwrite newer evidence or
+  recreate a closed PR's result. See §7 for commit conditions.
 - Store uses one write connection (`SetMaxOpenConns(1)` on the writer `*sql.DB`)
   and a separate read pool; WAL mode; `busy_timeout` set.
 - All goroutines take a root `context.Context` cancelled on SIGINT/SIGTERM.
@@ -147,7 +155,7 @@ query Fingerprints($owner:String!, $name:String!, $endCursor:String) {
     pullRequests(states:OPEN, first:100, after:$endCursor) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        number updatedAt headRefOid mergeStateStatus reviewDecision isDraft
+        number updatedAt baseRefOid headRefOid mergeStateStatus reviewDecision isDraft
         commits(last:1) { nodes { commit { statusCheckRollup { state } } } }
       }
     }
@@ -155,12 +163,19 @@ query Fingerprints($owner:String!, $name:String!, $endCursor:String) {
 }
 ```
 
-Fingerprint = SHA-256 over `updatedAt|headRefOid|mergeStateStatus|reviewDecision|isDraft|rollupState`.
-`baseRefOid` is deliberately excluded: base movement does not change the
-three-dot effective diff, and when it changes mergeability `mergeStateStatus`
-changes. `mergeStateStatus` of `UNKNOWN` needs no sleep-and-retry: GitHub
+Fingerprint = SHA-256 over `updatedAt|baseRefOid|headRefOid|mergeStateStatus|reviewDecision|isDraft|rollupState`.
+`baseRefOid` is included because base advancement can change the merge base
+and three-dot effective diff even when the head and merge state stay the same.
+For example, merging an ancestor of a stacked PR into its base removes that
+ancestor's files from the effective diff and can change CI-path approval
+guidance. `mergeStateStatus` of `UNKNOWN` needs no sleep-and-retry: GitHub
 computes it lazily, the fingerprint changes on a later poll, and the PR is
 re-enriched then. A repeated pagination cursor is an error.
+
+Cost: every base-branch advance changes the fingerprint of every open PR
+targeting that branch, so each merge re-enriches them all, and PRs with a prior
+review baseline miss `cache_diff` (two diff reads each). The per-account
+enrichment bound and the rate-limit pause absorb the burst.
 
 **PullRequestDetail** (one per enriched PR): the fields of the sweep's
 `PRS_QUERY` node for a single `pullRequest(number:)`, plus `authorAssociation`,
@@ -173,8 +188,9 @@ submittedAt, commit oid), latestOpinionatedReviews (first 50: state,
 submittedAt, author), reviewThreads (first 100: isResolved, first comment author
 and url, last comment author and createdAt, totalCount), comments (last 100:
 author, createdAt, updatedAt, databaseId), commits (first 100: oid, signature
-state, totalCount), recent commits (last 20: oid, committedDate, author user
-login).
+state, totalCount), head commit (last 1: oid, committedDate, statusCheckRollup
+state). The detail node therefore carries every fingerprint field, so a
+detail read is also a complete observation of that PR.
 
 **Checks** (when needed, paginated): the sweep's `CHECKS_QUERY` — status check
 rollup contexts on the head commit with `isRequired(pullRequestNumber:)`, name,
@@ -194,17 +210,40 @@ state or conclusion, and workflow run database id.
 
 ### 4.3 Enrichment (`collect`)
 
-Input: account client, repo, viewer login, repo rules. Output: `Record`. All
-follow-up reads are pinned to the `headRefOid` and `baseRefOid` returned by
-`PullRequestDetail`, so a push mid-enrichment yields a stale but consistent
-record; the next poll corrects it.
+Input: account client, repo, viewer login, repo rules, and the latest observed
+head-change time from sync. Output: `Record` plus staged cache entries.
+Commit-dependent follow-up reads are pinned to the `headRefOid` and
+`baseRefOid` returned by `PullRequestDetail`; branch policy and mutable
+comments are observed when read.
+
+If the detail fingerprint differs from the queued fingerprint, the attempt
+collects no follow-up evidence. Instead it commits the detail as a new
+observation under the same guards as a poll observation (§7 step 3): it updates
+the fingerprint, `head_oid`, and `head_changed_at`, invalidates the PR
+(revision + 1, `retry_at = now`), and ends. The PR is then re-dispatched at the
+new revision with a correct `head_changed_at`. Waiting for the next poll instead
+would leave `retry_at` due and re-dispatch into the same mismatch until then. A
+push after detail collection yields a stale record until the next poll; a newer
+observed revision prevents the old attempt from committing.
+Cache hits may be read during collection; new cache entries are staged and
+written only with the accepted enrichment outcome under the same revision
+guards and transaction.
 
 Normalization (from the detail node):
 
 - `author` = login or `ghost`; `is_bot` if `__typename == "Bot"` or login ends in `[bot]`.
 - `author_updated_at` = max of: author's issue comment times; for each review
-  thread whose last comment is by the author, that comment's time; commit dates
-  of the last 20 commits whose author user is the PR author or unlinked.
+  thread whose last comment is by the author, that comment's time; sync's
+  `head_changed_at`, if present. Sync sets that time when it observes a
+  different head OID after its first observation, regardless of Git author or
+  embedded commit dates. First observation alone is not evidence of a new
+  push. `Record` retains `head_changed_at` separately so classification can
+  identify unknown historical push activity. A changed review diff
+  independently requires re-review (see §5.3).
+- `head_activity_at` = `head_changed_at` if set; otherwise the head commit's
+  `committedDate`, clamped so it does not precede `createdAt`. Commit dates are
+  author-controlled, so the fallback applies only until sync observes a head
+  change. Used for "since" times in §5.3; it never feeds `author_updated_at`.
 - `my_threads_waiting` = unresolved threads whose first comment is by the viewer
   and last comment is by the author (url of first comment, time of last).
 - `unverified_commits` = commits whose signature state is not `VALID`
@@ -237,12 +276,29 @@ Follow-up reads are skipped for drafts and the viewer's own PRs:
 5. Signature policy per base branch: `required` if a ruleset rule has type
    `required_signatures`, else classic protection `enabled`; `absent` when the
    classic endpoint 404s with "Branch not protected"; `unavailable` on any other
-   read failure. Cached per `(repo, base_ref)` for 1 hour.
+   read failure, including insufficient admin permissions. Cached per
+   `(repo, base_ref)` for 1 hour; retryable failures are not cached as definite
+   policy answers.
 
-Any read failure sets `Record.Error`; one PR's failure never aborts the repo.
+`Record.Error` is reserved for unusable core evidence: a failed detail read,
+incomplete mandatory review/thread evidence, or a failed follow-up without a
+defined conservative fallback. Only these errors produce `unclassified`;
+one PR's failure never aborts the repo.
+
+Optional read failures retain their field-specific fallback: unreadable files
+→ `ci_paths_touched = unknown`; unreadable historic/current diffs →
+`diff_changed = unknown`; unreadable signature policy → `unavailable`. They
+populate `Record.EvidenceErrors` (`field`, `message`, `retryable`) and result
+notes without setting `Record.Error`. Transient failures schedule enrichment
+retry independently of fingerprint changes; permission failures remain visible
+and are revisited on normal reconciliation or policy-cache expiry.
 
 `Record` carries a `Version` integer. A stored record with an older version is
 treated as having a stale fingerprint and re-enriched on the next poll.
+It also carries `CollectionRulesHash`: SHA-256 of a canonical JSON encoding of
+the validated `test_approval` settings, including defaults. These rules govern
+which evidence is read; a mismatched hash requires fresh enrichment before
+publishing actions based on that evidence.
 
 ## 5. Classification (`classify`)
 
@@ -298,30 +354,36 @@ Helpers:
 
 - **waiting_test_approval** (never when `DIRTY`):
   - awaiting runs > 0 → reason "N workflow run(s) awaiting approval"; action
-    "approve and run workflows after reading the diff"; since head commit time.
+    "approve and run workflows after reading the diff"; since `head_activity_at`.
   - else fork, `marker_checks` configured, marker absent → reason
     "fork PR; no `A` or `B` check on <sha7>"; command = `command`, or
     `ci_paths_command` when `ci_paths` configured and `ci_paths_touched` is not
     false (reason gains "; changes CI files" or "; file list unreadable");
-    action "comment `<command>` after reading the diff"; since head commit time.
+    action "comment `<command>` after reading the diff"; since `head_activity_at`.
 - **waiting_on_me** (reviewable): review requested from viewer, or
   `my_threads_waiting` non-empty. Reason parts "your review is requested",
   "author replied in your threads (N)". Action "review" if requested else
   "reply in the linked threads". Since latest waiting-thread time, else
   `updatedAt`. Notes include thread URLs.
-- **needs_rereview** (reviewable): baseline exists, baseline commit ≠ head, and
+- **needs_rereview** (never when `DIRTY`; independent of `author_moved`):
+  baseline exists, baseline commit ≠ head, and
   `diff_changed` is not false. Reason "diff changed since your review" or
   "could not confirm the diff is unchanged since your review", suffixed
-  "(<state> at <sha7>)". Action "re-review". Since head commit time.
+  "(<state> at <sha7>)". Action "re-review". Since the later of
+  `head_activity_at` and the baseline review's `submittedAt` (the head moved
+  after that review).
 - **approved_blocked**: `reviewDecision == APPROVED` and blockers non-empty.
   Reason "approved; " + causes joined "; ". Action = distinct actions joined.
   Since `approved_at`, else `updatedAt`.
 - **needs_initial_review** (reviewable): viewer has no reviews. Reason "not
   reviewed by you"; action "review"; since `createdAt`.
 - **stale_changes_requested**: latest decisive review by viewer is
-  `CHANGES_REQUESTED` and not `author_moved`. Handed = earliest viewer review
-  submitted after `author_updated_at` (all reviews if never), default
-  `my_last_comment_at`. If `now - handed ≥ stale_days` → reason "changes
+  `CHANGES_REQUESTED`, not `author_moved`, and no re-review candidate. Handed =
+  earliest viewer review submitted after `author_updated_at` (all reviews if
+  unset), default `my_last_comment_at`. When historical push activity is
+  unknown (`head_changed_at` is nil), handed cannot precede the latest decisive
+  changes-requested review: lack of an observed push does not mean none
+  occurred. If `now - handed ≥ stale_days` → reason "changes
   requested; no author activity in N days since your feedback"; action "nudge
   the author, or close"; since handed.
 
@@ -357,7 +419,8 @@ identified (N unresolved threads)", "check the merge box on GitHub").
 Appended to rule-specific notes: "approved by @x" / "changes requested by @x"
 for others' decisive reviews; "branch updated, diff unchanged" when baseline
 commit ≠ head and `diff_changed` is false; "non-required checks failing" when
-merge state is `UNSTABLE`.
+merge state is `UNSTABLE`; field-specific messages from `Record.EvidenceErrors`,
+including whether a retry is pending.
 
 ### 5.7 Handoff lines
 
@@ -385,7 +448,7 @@ transaction at startup, forward-only, tracked in `schema_migrations`.
 
 ```sql
 accounts (
-  id INTEGER PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   login TEXT NOT NULL UNIQUE,
   kind TEXT NOT NULL CHECK (kind IN ('oauth','pat')),
   scopes TEXT NOT NULL,
@@ -396,7 +459,8 @@ accounts (
 )
 
 repos (
-  id INTEGER PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  revision INTEGER NOT NULL DEFAULT 0,
   account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
   owner TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -421,9 +485,15 @@ prs (
   url TEXT NOT NULL,
   author TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('open','closed')),
-  fingerprint TEXT,
+  revision INTEGER NOT NULL DEFAULT 0,
+  fingerprint TEXT,                           -- latest complete observation (poll or detail)
+  head_oid TEXT,
+  head_changed_at INTEGER,                     -- observed change, NULL initially
   record TEXT,                                -- JSON, versioned
-  record_at INTEGER,
+  record_at INTEGER,                          -- last successful core enrichment
+  last_enrich_attempt_at INTEGER,
+  enrich_failures INTEGER NOT NULL DEFAULT 0,
+  retry_at INTEGER,                           -- pending enrichment/retry deadline
   error TEXT,
   first_seen_at INTEGER NOT NULL,
   closed_at INTEGER,
@@ -458,19 +528,22 @@ CREATE INDEX transitions_pr ON transitions (repo_id, number, at);
 CREATE INDEX transitions_at ON transitions (at);
 
 cache_diff (
-  repo_id INTEGER NOT NULL, base_oid TEXT NOT NULL, reviewed_oid TEXT NOT NULL, head_oid TEXT NOT NULL,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  base_oid TEXT NOT NULL, reviewed_oid TEXT NOT NULL, head_oid TEXT NOT NULL,
   changed INTEGER NOT NULL, created_at INTEGER NOT NULL,
   PRIMARY KEY (repo_id, base_oid, reviewed_oid, head_oid)
 )
 
 cache_comment (
-  repo_id INTEGER NOT NULL, comment_id INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  comment_id INTEGER NOT NULL, updated_at INTEGER NOT NULL,
   is_command INTEGER NOT NULL, created_at INTEGER NOT NULL,
   PRIMARY KEY (repo_id, comment_id, updated_at)
 )
 
 cache_policy (
-  repo_id INTEGER NOT NULL, base_ref TEXT NOT NULL,
+  repo_id INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+  base_ref TEXT NOT NULL,
   policy TEXT NOT NULL CHECK (policy IN ('required','absent','unavailable')),
   fetched_at INTEGER NOT NULL,
   PRIMARY KEY (repo_id, base_ref)
@@ -481,7 +554,15 @@ Rules:
 - A `transitions` row is written only when the bucket differs from the stored
   result (or on first classification). Reason and notes changes alone do not
   create a transition.
+- `unclassified` is a non-settled bucket. Its rows stay in the log for the
+  explain view, but transition consumers (Phase 2 alerts, Phase 4 metrics)
+  compare settled buckets only: A → `unclassified` → A is no change, and
+  A → `unclassified` → B is A → B. Without this, every rules edit and every
+  transient fatal read would emit a leave-and-re-enter pair for each affected PR.
 - Closing a PR writes a transition to `closed` and deletes its `results` row.
+- Account and repo IDs are never reused, so old work cannot match a replacement
+  row whose revision starts at zero. Every repo-scoped cache cascades on repo
+  or account removal.
 - Retention: `prs` and `transitions` kept indefinitely. At startup, delete
   `cache_diff` and `cache_comment` rows older than 30 days.
 - Repo `rules` JSON is validated on write: allowed keys are `test_approval`
@@ -489,6 +570,14 @@ Rules:
   `ci_paths_command` string) and `stale_days` (int ≥ 1, default 7). Unknown
   keys are an error. `ci_paths` requires `ci_paths_command`; `marker_checks`
   requires `command`.
+- A rules edit atomically increments `repos.revision`. If `test_approval`
+  changes, invalidate all open PR records by incrementing their revisions and
+  setting `retry_at = now`; replace obsolete results with `unclassified`
+  (reason "collection rules changed; refreshing evidence") and record any
+  bucket transition in the same transaction. Enqueue immediately after commit,
+  outside the safety-reconcile cap. A `stale_days`-only edit triggers immediate
+  reclassification without GitHub reads. The new revision rejects work using
+  the prior rules.
 
 ## 7. Sync Engine (`sync`)
 
@@ -498,16 +587,69 @@ with ±10% jitter):
 1. Skip if the account is `needs_auth` or paused for rate limit.
 2. Run Fingerprints (all pages). On failure: record `last_error`, increment
    `consecutive_failures`, next attempt after `min(interval × 2^failures, 15m)`.
-3. For each open PR: enqueue enrichment if new, fingerprint changed, record
-   version stale, or `record_at` older than 30 minutes (safety reconcile; at
-   most 10% of the repo's open PRs per tick, minimum 1, oldest first).
-4. PRs in the store as `open` but absent from the result → mark `closed`.
-5. Each enrichment result is classified and stored in one transaction, then
-   published to the hub.
+3. Persist the complete observation only if the repo remains enabled and its
+   revision matches the one captured before the poll. For each open PR:
+   invalidate and enqueue enrichment if new, reopened, fingerprint changed,
+   record version stale, collection-rules hash mismatched, or `record_at` older
+   than 30 minutes.
+   Invalidation increments the PR revision and sets `retry_at = now`. Only
+   age-based safety reconciliation is capped at 10% of open PRs per tick,
+   minimum 1, oldest first; new, changed, rule-invalidated, and failed records
+   are outside that cap. Repeated unchanged polls of an already pending record
+   preserve its revision and retry deadline. For a non-retryable fatal error,
+   use `last_enrich_attempt_at` solely to bound safety reconciliation to once
+   per 30 minutes; it never counts as successful collection. Update `head_oid`
+   and, after a prior observation, `head_changed_at` only when the head changes.
+4. PRs in the store as `open` but absent from the complete result → mark
+   `closed`, increment revision, clear retries, and write the close transition
+   and result deletion atomically. Cancel queued/in-flight work for that PR.
+5. Each enrichment outcome is classified and stored in one transaction subject
+   to the revision checks below, then published to the hub only if accepted.
 6. On success: `last_success_at = now`, `consecutive_failures = 0`.
 
+Enrichment scheduling and outcomes:
+
+- A scheduler dispatches due `retry_at` work independently of the fingerprint
+  poll and resumes pending work after restart. Jobs capture repo revision, PR
+  revision, observed fingerprint, and rules; queued/in-flight work is
+  deduplicated per PR. Release that reservation on every completion,
+  cancellation, or discarded outcome; remaining due work then dispatches using
+  current revisions, including after a rules edit.
+- Retryable fatal or optional evidence failures increment `enrich_failures`
+  and set `retry_at` using exponential backoff with jitter, starting at 30s
+  and capped at 2m. Deadlines and failure counts are persisted. Account auth
+  and rate-limit pauses still apply. Non-retryable errors remain visible and
+  clear `retry_at`, waiting for changed evidence or normal reconciliation
+  instead of fast retry.
+- Every accepted attempt advances the PR revision and records
+  `last_enrich_attempt_at`. Successful core enrichment writes the record,
+  result, and any transition atomically, advances `record_at`, and clears the
+  fatal error. Optional evidence errors preserve conservative classification;
+  retryable ones retain a retry deadline. An outcome without retryable failures
+  clears `enrich_failures` and `retry_at`, including permission-related unknown
+  fields with documented fallbacks. A fatal failure writes an error record
+  carrying the current record version and collection-rules hash, plus an
+  `unclassified` result, but leaves `record_at` unchanged.
+
+Commit conditions and lifecycle:
+
+- In the write transaction, require the captured repo and PR revisions to
+  match, the repo to exist and be enabled, and the PR to exist and be open.
+  Failed checks discard the outcome without cache writes, result changes,
+  transitions, or hub publication. Enrichment cache writes use the same guards.
+- Enable/disable increments repo revision and cancels obsolete work. Enabling
+  schedules fresh fingerprints and pending enrichment. Removal cancels work
+  and deletes rows and caches in one transaction; workers cannot recreate them.
+- A disabled repo's rows are retained but excluded from queue views, the
+  header bar, and `devbox_prs` metrics; the repo appears only in settings.
+
 Reclassify ticker (every 5m): load all open records, classify with the current
-`now`, store changes, publish changed rows. No GitHub reads.
+rules and `now`, and capture repo/PR revisions. Store result and transition
+changes only if those revisions still match, the repo remains enabled, and the
+PR remains open. Serialize reclassification passes; result-only writes do not
+advance the evidence revision. Skip records with mismatched collection-rules
+hashes until enrichment replaces the refreshing result. Publish only accepted
+changes. No GitHub reads.
 
 Rate limiting per account: track the latest `remaining`/`reset` for GraphQL and
 REST (core). When either drops below 10% of its limit, pause that account's
@@ -574,7 +716,9 @@ change bucket move correctly. Unified and per-repo views use the ranking in 5.8.
 
 A header bar shows per-repo staleness when `now - last_success_at > 3m`, account
 `needs_auth` banners with a re-authenticate action, and rate-limit pauses with
-resume time.
+resume time. A successful fingerprint poll does not imply all evidence reads
+succeeded: separately show pending enrichment, fatal errors, and optional
+evidence retries with their last attempt and next retry times.
 
 Ages render as whole days since `WaitingSince`, `today` under one day.
 
@@ -629,16 +773,19 @@ usage error.
 
 ## 12. Testing
 
-All tests run with `-race`; none touch the network.
+Automated tests run with `-race` and `CGO_ENABLED=1`, using a supported host
+toolchain and C compiler; this does not change the pure-Go production build.
+They use local fixtures and fake servers, without external network access.
+The separately opt-in live test below is excluded from normal targets and CI.
 
 | Package | Approach |
 |---------|----------|
-| `classify` | Table-driven, pure, injected `now`. Seeded from `test_classify.py` cases: every bucket rule, precedence and `also`, notes, bot results, ready-to-merge, non-action buckets, ranking order, size badges. |
-| `collect` | Golden files: recorded GraphQL/REST responses → expected `Record`. Fixtures recorded once from public repositories (e.g. `NVIDIA/aicr`) by `hack/record-fixtures.sh` using `gh api`, then hand-edited for edge cases: forks, unsigned commits, > 100 threads, binary diffs, slash-command comments, unreadable file lists. |
+| `classify` | Table-driven, pure, injected `now`. Seeded from `test_classify.py` cases: every bucket rule, precedence and `also`, notes, bot results, ready-to-merge, non-action buckets, ranking order, size badges; changed diffs require re-review despite unchanged author activity and suppress conflicting stale nudges; initial observation with unknown push history cannot date staleness before the standing changes request; optional evidence errors retain conservative actions; `head_activity_at` fallback clamped to `createdAt` and re-review "since" clamped to the baseline review time for backdated commits. |
+| `collect` | Golden files: recorded GraphQL/REST responses → expected `Record`. Fixtures recorded once from public repositories (e.g. `NVIDIA/aicr`) by `hack/record-fixtures.sh` using `gh api`, then hand-edited for edge cases: forks, unsigned commits, > 100 threads, binary diffs, slash-command comments, unreadable file/diff/policy reads, insufficient admin permissions, another user's or backdated commits, and collection-rules hashes. |
 | `github` | `httptest`: retries and backoff (injected sleep), `Retry-After`, rate-limit parsing, GraphQL `errors` → failure, mutation refusal, SSO and OAuth-restriction 403 typing, diff media type. |
 | `auth` | Fake device-flow server for pending, slow_down, expired, denied, success; PAT validation (fine-grained rejection, missing scope); in-memory `Secrets`. |
-| `store` | Real SQLite in `t.TempDir()`: migrations, transition-on-bucket-change only, close handling, cache semantics, retention purge, rules validation. |
-| `sync` | Fake GitHub source + real store + fake clock: only changed PRs enriched (call counts), safety reconcile cap, closed detection, reclassify tick, failure backoff, rate-limit pause, needs_auth pause, clean shutdown. |
+| `store` | Real SQLite in `t.TempDir()`: migrations, transition-on-bucket-change only, close handling, cache semantics and cascading deletion, remove/re-add without reused IDs or inherited policy, retention purge, rules validation/invalidation, atomic revision guards on evidence/results/transitions/cache writes. |
+| `sync` | Fake GitHub source + real store + fake clock: changed PR enrichment (call counts), base advancement changing the effective diff with unchanged head/merge state, observed head changes independent of commit identity/date, safety reconcile cap, failed-record retries with unchanged fingerprint and restart recovery, success vs attempt timestamps, immediate rule invalidation, close/reopen, stale reclassification after newer enrichment, late completion after close/disable/delete, detail/fingerprint mismatch commits the detail as an observation and re-dispatches once (no repeated detail reads before the next poll), disabled repos hidden from queue and metrics, rate-limit/needs_auth pauses, clean shutdown. |
 | `web` | `httptest`: hostile titles escaped, non-GitHub links not rendered, Host and Origin enforcement, security headers, SSE publish delivery, settings validation errors. |
 | e2e | `devbox serve` against a fake GitHub (hidden URL flags): add PAT account → add repo → poll → `/` shows expected rows. |
 | live | Opt-in `DEVBOX_LIVE_TEST=1`, read-only against a public repo; never in CI. |
@@ -648,15 +795,18 @@ All tests run with `-race`; none touch the network.
 - `.versions.yaml`: single source of truth for Go and `golangci-lint` versions,
   read by the Makefile and CI.
 - `Makefile`: `build`, `test`, `lint`, `vuln`, `cover`, `run`, `fixtures`,
-  `cross` (all with `CGO_ENABLED=0`).
+  `cross`. `build`, `run`, and `cross` use `CGO_ENABLED=0`; `test` and `cover`
+  run with `-race` and `CGO_ENABLED=1`. Lint and vulnerability analysis use the
+  production `CGO_ENABLED=0` configuration. Race-test hosts provide a C compiler.
 - Coverage ratchet: `.coverage-floor` holds the total coverage percentage;
   `make cover` fails below it. Set to the measured value at the end of Phase 1;
   only raised afterwards.
-- GitHub Actions on push and PR: test (`-race`), `golangci-lint`, `govulncheck`,
-  coverage floor, cross-compile matrix (darwin/arm64, darwin/amd64,
-  linux/amd64, linux/arm64, windows/amd64) with `CGO_ENABLED=0`. Lint and
-  `govulncheck` failures block merge. Actions pinned by commit SHA; workflow
-  `permissions: contents: read`.
+- GitHub Actions on push and PR: Linux test/coverage jobs use `-race` and
+  `CGO_ENABLED=1` with a C compiler; `golangci-lint` and `govulncheck` use the
+  production configuration. The cross-compile matrix (darwin/arm64,
+  darwin/amd64, linux/amd64, linux/arm64, windows/amd64) uses `CGO_ENABLED=0`.
+  Lint and `govulncheck` failures block merge. Actions pinned by commit SHA;
+  workflow `permissions: contents: read`.
 - Release automation (goreleaser, signing) is deferred past Phase 1.
 
 ## 14. Roadmap (out of scope)
@@ -686,7 +836,7 @@ All tests run with `-race`; none touch the network.
 | Relationship to Python skill | Separate; revisit after use |
 | Name and location | `devbox`, `github.com/thingzio/devbox` |
 | UI approach | Server-rendered single binary |
-| CGO | Disallowed; pure-Go SQLite |
+| CGO | Production and cross builds disable it; race tests enable it; SQLite remains pure Go |
 | Tracing | Not included; `--debug` logging instead |
 | Coverage gate | Ratchet from measured floor |
 | OAuth App owner | `thingzio` |
