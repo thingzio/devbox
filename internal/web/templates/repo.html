@@ -1,0 +1,5 @@
+{{define "content"}}
+<h1>{{.Name}}</h1>
+<p class="meta">Monitored by {{range $i, $a := .Accounts}}{{if $i}}, {{end}}@{{$a}}{{end}} · <a href="{{.GitHubURL}}">open pull requests on GitHub</a></p>
+<div id="queue" hx-get="{{.Queue.FragmentURL}}" hx-trigger="refresh delay:1s" hx-swap="innerHTML">{{template "queue-body" .Queue}}</div>
+{{end}}

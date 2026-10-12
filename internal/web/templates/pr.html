@@ -1,0 +1,12 @@
+{{define "content"}}
+{{range .}}
+<article class="explain">
+<h1>{{template "prlink" .Link}} {{.Title}}</h1>
+<p class="meta">@{{.Account}} · {{.State}} · revision {{.Revision}}</p>
+{{with .Result}}<section><h2>Result</h2><p><strong>{{.Bucket}}</strong>: {{.Reason}}{{if .Action}} → {{.Action}}{{end}}</p>
+{{if .Also}}<p>also: {{join .Also ", "}}</p>{{end}}{{range .Notes}}<p class="note">{{.}}</p>{{end}}</section>{{else}}<p>Not classified yet.</p>{{end}}
+<section><h2>Evidence</h2><table>{{range .Evidence}}<tr><th>{{.Label}}</th><td>{{.Value}}</td></tr>{{end}}</table></section>
+<section><h2>History</h2><ol>{{range .Transitions}}<li>{{.At}}: {{.From}} → {{.To}} ({{.Reason}})</li>{{else}}<li>No transitions yet.</li>{{end}}</ol></section>
+</article>
+{{end}}
+{{end}}

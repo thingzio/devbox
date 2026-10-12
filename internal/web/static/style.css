@@ -1,0 +1,30 @@
+:root { color-scheme: light dark; --fg: #1f2328; --muted: #656d76; --bg: #ffffff; --line: #d0d7de; --warn: #9a6700; --accent: #0969da; }
+@media (prefers-color-scheme: dark) { :root { --fg: #e6edf3; --muted: #8d96a0; --bg: #0d1117; --line: #30363d; --warn: #d29922; --accent: #4493f8; } }
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--fg); background: var(--bg); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+header.top { display: flex; gap: 1.5rem; align-items: center; padding: 0.6rem 1.25rem; border-bottom: 1px solid var(--line); }
+header.top nav { display: flex; gap: 1rem; }
+.brand { font-weight: 600; color: var(--fg); }
+main { padding: 1rem 1.25rem; max-width: 72rem; }
+.status { padding: 0.5rem 1.25rem 0; }
+.banner { margin: 0.25rem 0; padding: 0.4rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; }
+.banner.warn { border-color: var(--warn); }
+.filters { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; margin-bottom: 0.5rem; }
+.sortkeys, .meta, .counts, .also, .totals { color: var(--muted); }
+.bucket h2 { font-size: 1rem; margin: 1.25rem 0 0.25rem; }
+.bucket ul { list-style: none; padding: 0; margin: 0; }
+.row { padding: 0.35rem 0; border-bottom: 1px solid var(--line); }
+.also { font-size: 0.9em; padding-left: 1rem; }
+.note + .note::before, .also .note:first-child::before { content: " · "; }
+.badge { display: inline-block; margin-left: 0.3rem; padding: 0 0.4rem; border: 1px solid var(--line); border-radius: 999px; font-size: 0.8em; color: var(--muted); }
+.badge.first { border-color: var(--accent); color: var(--accent); }
+.handoff code { font-size: 0.85em; word-break: break-all; }
+.empty { padding: 2rem 0; color: var(--muted); }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+form.inline { display: inline-flex; gap: 0.5rem; align-items: center; margin: 0.25rem 0.5rem 0.25rem 0; }
+textarea { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.2em; letter-spacing: 0.1em; }
+details.repo { padding: 0.5rem 0; border-bottom: 1px solid var(--line); }

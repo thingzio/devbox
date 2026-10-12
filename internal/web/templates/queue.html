@@ -1,0 +1,10 @@
+{{define "content"}}
+<form class="filters" method="get" action="/">
+<label>Account <select name="account"><option value="">all</option>{{range .Accounts}}<option value="{{.}}"{{if eq . $.Filter.Account}} selected{{end}}>@{{.}}</option>{{end}}</select></label>
+<label>Bucket <select name="bucket"><option value="">all</option>{{range .BucketOptions}}<option value="{{.ID}}"{{if eq .ID $.Filter.Bucket}} selected{{end}}>{{.Title}}</option>{{end}}</select></label>
+<label>Repository <input name="repo" value="{{.RepoFilter}}" placeholder="owner/name"></label>
+<button type="submit">Filter</button>
+</form>
+<p class="sortkeys">Buckets in precedence order; within a bucket: milestone due soonest, first-time contributors, waiting longest, PR number.</p>
+<div id="queue" hx-get="{{.FragmentURL}}" hx-trigger="refresh delay:1s" hx-swap="innerHTML">{{template "queue-body" .}}</div>
+{{end}}
