@@ -1,0 +1,32 @@
+{
+  "kind": 1,
+  "record": {
+    "version": 1,
+    "collection_rules_hash": "c49368c0df159776685de16feb40d78f6a9aab324039078ee35fd768f30ded8a",
+    "number": 3203,
+    "title": "fix(upgrade): count and name unplaced Argo Applications",
+    "url": "https://github.com/NVIDIA/aicr/pull/3203",
+    "author": "mikecook",
+    "is_bot": false,
+    "draft": false,
+    "fork": true,
+    "author_association": "MEMBER",
+    "additions": 607,
+    "deletions": 68,
+    "created_at": "2026-10-12T21:18:38Z",
+    "updated_at": "2026-10-12T21:33:38Z",
+    "base_ref": "main",
+    "base_oid": "7ed1b9b6a11959e7f16cd499e498d15951ba58cb",
+    "head_oid": "05973fbe05ab8322925bdbc52ea1c619d7b7d122",
+    "head_committed_at": "2026-10-12T20:44:19Z",
+    "merge_state": "BLOCKED",
+    "review_decision": "REVIEW_REQUIRED",
+    "auto_merge": false,
+    "review_requested_from_me": false,
+    "unresolved_threads": 0,
+    "signatures_complete": true,
+    "signature_policy": "required",
+    "awaiting_runs": 0,
+    "marker_present": true
+  }
+}
