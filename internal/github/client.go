@@ -220,3 +220,6 @@ func sleepContext(ctx context.Context, d time.Duration) error {
 		return nil
 	}
 }
+
+// BaseURL is the API base URL with a trailing slash.
+func (c *Client) BaseURL() string { return c.api.String() }

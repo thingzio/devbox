@@ -1,0 +1,59 @@
+{
+  "data": {
+    "rateLimit": {"limit": 5000, "cost": 1, "remaining": 4990, "resetAt": "2026-10-01T13:00:00Z"},
+    "repository": {
+      "pullRequest": {
+        "number": 42,
+        "title": "Add GPU recipe",
+        "url": "https://github.com/NVIDIA/aicr/pull/42",
+        "isDraft": false,
+        "isCrossRepository": true,
+        "createdAt": "2026-09-28T10:00:00Z",
+        "updatedAt": "2026-10-01T09:30:00Z",
+        "authorAssociation": "FIRST_TIME_CONTRIBUTOR",
+        "additions": 120,
+        "deletions": 4,
+        "milestone": {"title": "v1.0", "dueOn": "2026-10-15T00:00:00Z"},
+        "author": {"login": "alice", "__typename": "User"},
+        "baseRefName": "main",
+        "baseRefOid": "b000000000000000000000000000000000000000",
+        "headRefOid": "h111111111111111111111111111111111111111",
+        "mergeStateStatus": "BLOCKED",
+        "reviewDecision": "APPROVED",
+        "autoMergeRequest": null,
+        "reviewRequests": {"nodes": [
+          {"requestedReviewer": {"__typename": "User", "login": "me"}},
+          {"requestedReviewer": {"__typename": "Team"}}
+        ]},
+        "myReviews": {"nodes": [
+          {"state": "APPROVED", "submittedAt": "2026-09-30T08:00:00Z", "commit": {"oid": "o000000000000000000000000000000000000000"}},
+          {"state": "PENDING", "submittedAt": null, "commit": null},
+          {"state": "COMMENTED", "submittedAt": "2026-09-29T08:00:00Z", "commit": {"oid": "o000000000000000000000000000000000000000"}}
+        ]},
+        "latestOpinionatedReviews": {"nodes": [
+          {"state": "APPROVED", "submittedAt": "2026-09-30T08:00:00Z", "author": {"login": "me"}},
+          {"state": "CHANGES_REQUESTED", "submittedAt": "2026-09-30T09:00:00Z", "author": {"login": "bob"}}
+        ]},
+        "reviewThreads": {"totalCount": 2, "nodes": [
+          {"isResolved": false,
+           "first": {"nodes": [{"author": {"login": "me"}, "url": "https://github.com/NVIDIA/aicr/pull/42#discussion_r1"}]},
+           "last": {"nodes": [{"author": {"login": "alice"}, "createdAt": "2026-10-01T09:00:00Z"}]}},
+          {"isResolved": true,
+           "first": {"nodes": [{"author": {"login": "bob"}, "url": "https://github.com/NVIDIA/aicr/pull/42#discussion_r2"}]},
+           "last": {"nodes": [{"author": {"login": "bob"}, "createdAt": "2026-09-30T10:00:00Z"}]}}
+        ]},
+        "comments": {"nodes": [
+          {"author": {"login": "alice"}, "createdAt": "2026-09-30T12:00:00Z", "updatedAt": "2026-09-30T12:00:00Z", "databaseId": 1001},
+          {"author": {"login": "me"}, "createdAt": "2026-09-30T13:00:00Z", "updatedAt": "2026-09-30T13:05:00Z", "databaseId": 1002}
+        ]},
+        "commits": {"totalCount": 2, "nodes": [
+          {"commit": {"oid": "c100000000000000000000000000000000000000", "signature": {"state": "VALID"}}},
+          {"commit": {"oid": "c200000000000000000000000000000000000000", "signature": null}}
+        ]},
+        "head": {"nodes": [
+          {"commit": {"oid": "h111111111111111111111111111111111111111", "committedDate": "2026-10-01T08:00:00Z", "statusCheckRollup": {"state": "FAILURE"}}}
+        ]}
+      }
+    }
+  }
+}
