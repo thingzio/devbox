@@ -247,3 +247,39 @@ func TestAge(t *testing.T) {
 type errorString string
 
 func (e errorString) Error() string { return string(e) }
+
+// TestBrowserPostWithNullOrigin reproduces what browsers send under
+// Referrer-Policy: no-referrer: form and fetch POSTs carry "Origin: null"
+// plus Sec-Fetch-Site, which pages cannot forge.
+func TestBrowserPostWithNullOrigin(t *testing.T) {
+	ts := newTestServer(t)
+	ts.account("me")
+	send := func(origin, fetchSite string) int {
+		t.Helper()
+		req, _ := http.NewRequestWithContext(ts.ctx, http.MethodPost, ts.http.URL+"/repos",
+			strings.NewReader(url.Values{"account": {"me"}, "repo": {"o/r"}}.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if origin != "" {
+			req.Header.Set("Origin", origin)
+		}
+		if fetchSite != "" {
+			req.Header.Set("Sec-Fetch-Site", fetchSite)
+		}
+		resp, err := ts.client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if code := send("null", "same-origin"); code != http.StatusSeeOther {
+		t.Fatalf("browser same-origin POST with Origin: null = %d, want 303", code)
+	}
+	for _, tc := range []struct{ origin, site string }{
+		{"null", ""}, {"null", "cross-site"}, {"https://evil.example", "same-origin"}, {"https://evil.example", "cross-site"},
+	} {
+		if code := send(tc.origin, tc.site); code != http.StatusForbidden {
+			t.Errorf("POST Origin=%q Sec-Fetch-Site=%q = %d, want 403", tc.origin, tc.site, code)
+		}
+	}
+}

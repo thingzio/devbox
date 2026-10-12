@@ -130,11 +130,18 @@ func (s *Server) secure(next http.Handler) http.Handler {
 	})
 }
 
+// sameOrigin accepts a matching Origin, or a browser-asserted same-origin
+// request. Under Referrer-Policy: no-referrer browsers send "Origin: null" on
+// form and fetch POSTs, but always send Sec-Fetch-Site, which pages cannot forge.
 func sameOrigin(r *http.Request) bool {
-	if origin := r.Header.Get("Origin"); origin != "" {
-		return origin == "http://"+r.Host
+	switch origin := r.Header.Get("Origin"); origin {
+	case "http://" + r.Host:
+		return true
+	case "", "null":
+		return r.Header.Get("Sec-Fetch-Site") == "same-origin"
+	default:
+		return false
 	}
-	return r.Header.Get("Sec-Fetch-Site") == "same-origin"
 }
 
 type statusRecorder struct {
