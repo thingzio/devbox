@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -63,6 +64,14 @@ func readResult(ctx context.Context, q rowQuerier, repoID int64, number int) (*R
 	r.WaitingSince = timePtr(since)
 	r.Also, r.Notes = decodeList(also), decodeList(notes)
 	return &r, nil
+}
+
+func sameResult(a, b ResultRow) bool {
+	sameSince := (a.WaitingSince == nil) == (b.WaitingSince == nil) &&
+		(a.WaitingSince == nil || ms(*a.WaitingSince) == ms(*b.WaitingSince))
+	return a.Bucket == b.Bucket && a.Reason == b.Reason && a.Action == b.Action && sameSince &&
+		slices.Equal(decodeList(encodeList(a.Also)), decodeList(encodeList(b.Also))) &&
+		slices.Equal(decodeList(encodeList(a.Notes)), decodeList(encodeList(b.Notes)))
 }
 
 // writeResult upserts the result and appends a transition when the bucket
