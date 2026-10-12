@@ -1,1 +1,42 @@
-{{define "content"}}<p>Settings are added in the next task.</p>{{end}}
+{{define "content"}}
+<h1>Settings</h1>
+{{if .Error}}<p class="banner warn" role="alert">{{.Error}}</p>{{end}}
+
+<section id="accounts"><h2>Accounts</h2>
+{{if .Accounts}}<table><thead><tr><th>Account</th><th>Kind</th><th>Scopes</th><th>Status</th><th></th></tr></thead><tbody>
+{{range .Accounts}}<tr><td>@{{.Login}}</td><td>{{.Kind}}</td><td>{{.Scopes}}</td>
+<td>{{.Status}}{{if .Detail}}: {{.Detail}}{{end}}{{if .PausedUntil}} (rate-limit pause until {{.PausedUntil}}){{end}}</td>
+<td><form method="post" action="/accounts/{{.Login}}/delete" class="inline"><button type="submit">Remove</button></form>
+<a href="https://github.com/settings/applications">Revoke on GitHub</a></td></tr>{{end}}
+</tbody></table>{{else}}<p>No accounts yet.</p>{{end}}
+<h3>Add an account</h3>
+{{if .ClientIDConfigured}}<div id="device"><button type="button" hx-post="/accounts/device" hx-target="#device" hx-swap="innerHTML">Sign in with GitHub</button></div>
+{{else}}<p>Device sign-in needs an OAuth client ID (set <code>DEVBOX_GITHUB_CLIENT_ID</code>); add a classic token instead.</p>{{end}}
+<form method="post" action="/accounts/pat" class="inline"><label>Classic token <input type="password" name="token" autocomplete="off" required></label><button type="submit">Add token</button></form>
+</section>
+
+<section id="repos"><h2>Repositories</h2>
+{{if .AccountLogins}}<form method="post" action="/repos" class="inline">
+<label>Repository <input name="repo" placeholder="owner/name or GitHub URL" required></label>
+<label>Account <select name="account">{{range .AccountLogins}}<option value="{{.}}">@{{.}}</option>{{end}}</select></label>
+<button type="submit">Add</button></form>{{end}}
+{{range .Repos}}<details class="repo"><summary><strong>{{.Name}}</strong> @{{.Account}} · {{if .Enabled}}enabled{{else}}disabled{{end}}{{if .LastError}} · last error: {{.LastError}}{{end}}</summary>
+<form method="post" action="/repos/{{.ID}}/{{if .Enabled}}disable{{else}}enable{{end}}" class="inline"><button type="submit">{{if .Enabled}}Disable{{else}}Enable{{end}}</button></form>
+<form method="post" action="/repos/{{.ID}}/delete" class="inline"><button type="submit">Remove</button></form>
+<form method="post" action="/repos/{{.ID}}/rules"><label>Rules (maintainer-sweep overlay JSON)<textarea name="rules" rows="10">{{.RulesJSON}}</textarea></label><button type="submit">Save rules</button></form>
+</details>{{else}}<p>No repositories yet.</p>{{end}}
+</section>
+
+{{if .Imports}}<section id="import"><h2>Import from maintainer-sweep</h2>
+{{range .Imports}}<form method="post" action="/import" class="inline"><input type="hidden" name="file" value="{{.}}"><span>{{.}}</span>
+<select name="account">{{range $.AccountLogins}}<option value="{{.}}">@{{.}}</option>{{end}}</select><button type="submit">Import</button></form>{{end}}
+</section>{{end}}
+
+<section><h2>Polling</h2><p>Every {{.PollInterval}} (set with <code>--poll-interval</code>).</p></section>
+{{end}}
+
+{{define "device"}}<div id="device-flow"{{if .Pending}} hx-get="/accounts/device/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
+{{if .Pending}}<p>Enter code <strong class="code">{{.UserCode}}</strong> at {{if .VerificationURL}}<a href="{{.VerificationURL}}" target="_blank" rel="noopener noreferrer">{{.VerificationURL}}</a>{{else}}{{.VerificationURI}}{{end}}. Waiting for authorization…</p>
+{{else if .Done}}<p>Added @{{.Login}}. <a href="/settings">Refresh</a></p>
+{{else}}<p class="banner warn">{{.Error}}</p>{{end}}
+</div>{{end}}

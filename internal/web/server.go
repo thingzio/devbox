@@ -91,6 +91,7 @@ func New(o Options) (*Server, error) {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	s.viewRoutes(mux)
+	s.settingsRoutes(mux)
 	return s.logRequests(s.secure(mux))
 }
 

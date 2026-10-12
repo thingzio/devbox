@@ -5,7 +5,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -42,6 +44,16 @@ func (f *fakeEngine) RateStatus() map[string]time.Time {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.paused
+}
+func (f *fakeEngine) reposChangedCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.reposChanged
+}
+func (f *fakeEngine) rules() []rulesCall {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]rulesCall(nil), f.rulesCalls...)
 }
 func (f *fakeEngine) setPaused(p map[string]time.Time) {
 	f.mu.Lock()
@@ -126,6 +138,12 @@ func (ts *testServer) setNow(now time.Time) {
 	ts.now = now
 }
 
+func (ts *testServer) setScopes(scopes string) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.apiScopes = scopes
+}
+
 func (ts *testServer) get(path string) (int, string) {
 	ts.t.Helper()
 	resp, err := ts.client.Get(ts.http.URL + path)
@@ -135,6 +153,20 @@ func (ts *testServer) get(path string) (int, string) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	return resp.StatusCode, string(body)
+}
+
+func (ts *testServer) post(path string, form url.Values) (int, string, http.Header) {
+	ts.t.Helper()
+	req, _ := http.NewRequestWithContext(ts.ctx, http.MethodPost, ts.http.URL+path, strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", ts.http.URL)
+	resp, err := ts.client.Do(req)
+	if err != nil {
+		ts.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, string(body), resp.Header
 }
 
 func (ts *testServer) account(login string) store.Account {
