@@ -801,11 +801,14 @@ Ages render as whole days since `WaitingSince`, `today` under one day.
 
 ```
 devbox serve [--addr 127.0.0.1:8484] [--db PATH] [--poll-interval 2m|1m..15m|manual]
-             [--debug] [--log-format auto|text|json] [--allow-remote]
+             [--debug] [--log-format auto|text|json] [--allow-remote] [--no-browser]
 devbox version
 ```
 
-Hidden test flags: `--github-api-url`, `--github-url`. Environment:
+Once listening, `serve` opens the UI in the default browser (`open`,
+`xdg-open`, or `rundll32 url.dll,FileProtocolHandler`; an unspecified listen
+address opens loopback); `--no-browser` skips it, and a failure only logs the
+URL. Hidden test flags: `--github-api-url`, `--github-url`. Environment:
 `DEVBOX_GITHUB_CLIENT_ID`. Exit codes: 0 clean shutdown, 1 runtime error, 2
 usage error.
 

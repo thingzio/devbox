@@ -2,8 +2,8 @@
 
 A local, single-user maintainer queue for GitHub. `devbox` polls the repositories
 you maintain, works out which open pull requests are waiting on you and why, and
-serves a live queue at http://127.0.0.1:8484. State lives in SQLite; tokens live
-in your OS keychain.
+serves a live queue at http://127.0.0.1:8484, opening it in your default browser
+on start. State lives in SQLite; tokens live in your OS keychain.
 
 Design: [docs/superpowers/specs/2026-10-12-devbox-phase1-design.md](docs/superpowers/specs/2026-10-12-devbox-phase1-design.md)
 
@@ -28,7 +28,7 @@ make build CLIENT_ID=<thingzio OAuth App client id>   # CLIENT_ID optional; clas
 
 ```
 devbox serve [--addr 127.0.0.1:8484] [--db PATH] [--poll-interval 2m|1m..15m|manual]
-             [--debug] [--log-format auto|text|json] [--allow-remote]
+             [--debug] [--log-format auto|text|json] [--allow-remote] [--no-browser]
 devbox version
 ```
 
@@ -36,7 +36,9 @@ devbox version
 - maintainer-sweep overlays offered for import: `${XDG_CONFIG_HOME:-~/.config}/maintainer-sweep/repos/<owner>/<repo>.json`
   (or `$MAINTAINER_SWEEP_CONFIG_DIR/repos`)
 - `--poll-interval` sets the default check interval (1m–15m, or `manual` to check only when you press
-  Refresh on the Queue page). Settings → Polling can override it; the choice is saved in the database.
+  Refresh). Settings → Polling can override it; the choice is saved in the database.
+- `--no-browser` skips opening the queue in the default browser on start (`open`, `xdg-open`, or
+  `rundll32`); if the browser can't be opened, the URL is logged instead.
 - `--debug` logs every GitHub request (never tokens, bodies, or diffs).
 - Metrics: `GET /metrics` (Prometheus). Health: `GET /healthz`.
 

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 
 	"github.com/thingzio/devbox/internal/app"
@@ -65,6 +66,7 @@ func serve(args []string, stderr io.Writer) int {
 	debug := fs.Bool("debug", false, "log at debug level, including every GitHub request")
 	logFormat := fs.String("log-format", "auto", "log format: auto, text, or json")
 	allowRemote := fs.Bool("allow-remote", false, "allow a non-loopback --addr")
+	noBrowser := fs.Bool("no-browser", false, "do not open the UI in the default browser on start")
 	apiURL := fs.String("github-api-url", github.DefaultAPIURL, "GitHub API base URL")
 	webURL := fs.String("github-url", "https://github.com", "GitHub web base URL")
 	fs.Usage = func() {
@@ -102,6 +104,9 @@ func serve(args []string, stderr io.Writer) int {
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintln(stderr, "devbox serve:", err)
 		return 2
+	}
+	if !*noBrowser {
+		cfg.Ready = func(addr string) { openBrowser(log, runtime.GOOS, addr, launchDetached) }
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
