@@ -92,7 +92,7 @@ jobs:
         with:
           go-version: ${{ needs.versions.outputs.go }}
       - name: Scan the full history for secrets
-        run: make secrets
+        run: make leaks
 
   release-build:
     needs: versions

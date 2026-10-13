@@ -17,7 +17,7 @@ LDFLAGS               := -s -w \
 BIN                   := bin/devbox
 PLATFORMS             := darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64
 
-.PHONY: build test fmt lint vuln cover run fixtures cross qualify actionlint secrets notices notices-check release-check snapshot release-tag
+.PHONY: build test fmt lint vuln cover run fixtures cross qualify actionlint leaks notices notices-check release-check snapshot release-tag
 
 # The gate CI runs; if it passes here, CI passes.
 qualify: lint actionlint vuln cover cross notices-check
@@ -59,7 +59,7 @@ actionlint:
 	CGO_ENABLED=0 go run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
 
 # Scans the full git history, not just the working tree.
-secrets:
+leaks:
 	CGO_ENABLED=0 go run github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION) git --no-banner --redact .
 
 notices:

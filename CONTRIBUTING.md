@@ -53,7 +53,7 @@ make cover     # tests plus the coverage floor
 make cross     # darwin, linux, and windows binaries without cgo
 make qualify   # the full gate CI runs: lint, actionlint, vuln, cover, cross, notices
 make snapshot  # a local dry run of the release build (goreleaser)
-make secrets   # gitleaks over the full git history
+make leaks     # gitleaks over the full git history
 ```
 
 `make qualify` is the same gate CI runs. If it passes locally it should pass in

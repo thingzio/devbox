@@ -42,7 +42,7 @@ make lint       # golangci-lint
 make qualify    # the full CI gate: lint, actionlint, vuln, cover, cross, notices
 make snapshot   # local goreleaser dry run
 make notices    # regenerate THIRD_PARTY_NOTICES.md after a dependency change
-make secrets    # gitleaks over the full history
+make leaks      # gitleaks over the full history
 go test ./internal/web -run TestName -v    # one test
 ```
 
