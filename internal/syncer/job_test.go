@@ -46,7 +46,7 @@ func TestDispatchCommitsCollectedRecords(t *testing.T) {
 	if in := en.src.inputs[0]; in.QueuedFingerprint != "a" || in.Viewer != "me" || in.Owner != "o" || in.RepoID != en.repo.ID {
 		t.Fatalf("collect input = %+v", in)
 	}
-	if len(events) == 0 {
+	if len(prChanges(drain(events))) == 0 {
 		t.Fatal("no change event published")
 	}
 	trs := en.transitions(1)

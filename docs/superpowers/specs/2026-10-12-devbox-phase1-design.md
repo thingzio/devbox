@@ -738,11 +738,12 @@ change bucket move correctly. Unified and per-repo views use the ranking in 5.8.
 | `GET /r/{owner}/{name}/{n}` | Explain view: result, evidence summary from the record, transition history. |
 | `GET /settings` | Accounts (status, kind, scopes, rate remaining, pause state), repos (add, enable/disable, remove, rules editor with validation errors and an explanation of each rule), import from `~/.config/maintainer-sweep/repos/**.json` (one-time, per file, choose account; listed with guidance until an account exists), polling dropdown (Default from `--poll-interval`, Manual, 1m–15m presets). |
 | `POST /settings/polling` | Save the polling choice (`default` clears it) and apply it to the running engine. |
-| `POST /refresh` | Check every enabled repository now, then return to the page it was pressed on (`next`, local paths only). Every page's header shows "Last checked", the polling mode, and the Refresh button. |
+| `POST /refresh` | Check every enabled repository now, then return to the page it was pressed on (`next`, local paths only). Every page's header shows "Last checked", the polling mode, and the Refresh button; it re-renders (with the status banners) on every recorded poll via an SSE `poll` event and every 30s. |
 | `POST /accounts/device`, `GET /accounts/device/{flow}` | Start and poll device flow. |
 | `POST /accounts/pat`, `POST /accounts/{login}/delete` | PAT add, account removal. |
 | `POST /repos`, `POST /repos/{id}/(enable\|disable\|delete\|rules)` | Repo management. |
-| `GET /events` | SSE stream. |
+| `GET /events` | SSE stream: `change` (a PR's state or result changed) and `poll` (a repository poll was recorded). |
+| `GET /fragments/status` | Header heartbeat plus the status banners (swapped out of band). |
 | `GET /metrics` | Prometheus exposition. |
 | `GET /healthz` | Liveness. |
 

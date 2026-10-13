@@ -62,7 +62,7 @@ type Server struct {
 	allowedHosts map[string]bool
 }
 
-var funcs = template.FuncMap{"join": strings.Join}
+var funcs = template.FuncMap{"join": strings.Join, "profile": profileURL}
 
 // New parses templates and prepares the Host allow-list.
 func New(o Options) (*Server, error) {
@@ -108,6 +108,7 @@ func (s *Server) viewRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /r/{owner}/{name}", s.handleRepo)
 	mux.HandleFunc("GET /fragments/r/{owner}/{name}", s.handleRepoFragment)
 	mux.HandleFunc("GET /r/{owner}/{name}/{number}", s.handleExplain)
+	mux.HandleFunc("GET /fragments/status", s.handleStatusFragment)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("POST /refresh", s.handleRefresh)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })

@@ -3,6 +3,7 @@ package web
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/thingzio/devbox/internal/classify"
+	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/store"
 )
 
@@ -284,6 +286,23 @@ func (s *Server) evidence(d store.PRDetail) []kv {
 	return out
 }
 
+// sseMessage names the event for the browser: "change" refreshes the queue and
+// the status, "poll" refreshes only the status.
+func sseMessage(ev hub.Event) string {
+	if ev.Kind == hub.Polled {
+		return fmt.Sprintf("event: poll\ndata: {\"repo\":%d}\n\n", ev.RepoID)
+	}
+	return fmt.Sprintf("event: change\ndata: {\"repo\":%d,\"number\":%d}\n\n", ev.RepoID, ev.Number)
+}
+
+// handleStatusFragment renders the header heartbeat plus the status banners,
+// which the page swaps out of band, so both stay current without a reload.
+func (s *Server) handleStatusFragment(w http.ResponseWriter, r *http.Request) {
+	v := s.buildStatus(r.Context())
+	v.OOB = true
+	s.renderFragment(w, "queue", "live-status", v)
+}
+
 // handleEvents streams change events (§9) until the client or server goes away.
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
@@ -307,7 +326,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			if _, err := fmt.Fprintf(w, "event: change\ndata: {\"repo\":%d,\"number\":%d}\n\n", ev.RepoID, ev.Number); err != nil || rc.Flush() != nil {
+			if _, err := io.WriteString(w, sseMessage(ev)); err != nil || rc.Flush() != nil {
 				return
 			}
 		case <-ping.C:

@@ -314,6 +314,7 @@ type statusView struct {
 	Paused   []pausedView
 	Repos    []repoStatusView
 	Sync     syncView
+	OOB      bool // rendered into the live status fragment, swapped out of band
 }
 
 // buildStatus feeds the header: auth problems, rate pauses, staleness,
@@ -408,4 +409,15 @@ func syncState(paused, manual, polled, warn bool) string {
 		return "warn"
 	}
 	return "ok"
+}
+
+// profileURL links a GitHub login to its profile; bot logins link to their app.
+func profileURL(login string) string {
+	if login == "" {
+		return ""
+	}
+	if app, ok := strings.CutSuffix(login, "[bot]"); ok {
+		return "https://github.com/apps/" + url.PathEscape(app)
+	}
+	return "https://github.com/" + url.PathEscape(login)
 }

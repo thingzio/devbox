@@ -1,19 +1,27 @@
-{{define "status"}}{{if or .Accounts .Paused .Repos}}<section class="alerts" aria-label="Status">
+{{define "status"}}<section id="alerts" class="alerts" aria-label="Status"{{if .OOB}} hx-swap-oob="true"{{end}}>
+{{- if or .Accounts .Paused .Repos}}
 {{range .Accounts}}<p class="msg err">@{{.Login}} needs re-authentication: {{.Detail}} <a href="/settings#accounts">Re-authenticate</a></p>{{end}}
 {{range .Paused}}<p class="msg warn">@{{.Account}} is paused for rate limits until {{.Until}}</p>{{end}}
 {{range .Repos}}<p class="msg {{.Level}}"><strong>{{.Name}}</strong>: {{join .Messages "; "}}</p>{{end}}
-</section>{{end}}{{end}}
+{{end -}}
+</section>{{end}}
+
+{{define "sync"}}<span id="sync" class="sync sync-{{.State}}" hx-get="/fragments/status" hx-trigger="every 30s, refresh delay:1s" hx-swap="outerHTML">Last checked {{.Checked}} · {{.Mode}}</span>{{end}}
+
+{{define "live-status"}}{{template "sync" .Sync}}{{template "status" .}}{{end}}
+
+{{define "user"}}{{if .}}<a href="{{profile .}}">@{{.}}</a>{{end}}{{end}}
 
 {{define "prlink"}}{{if .URL}}<a href="{{.URL}}">{{.Repo}}#{{.Number}}</a>{{else}}{{.Repo}}#{{.Number}}{{end}}{{end}}
 
 {{define "row"}}<li class="item">
 <div class="item-main">
 <a class="item-title" href="{{.ExplainURL}}">{{.Title}}</a>
-<div class="item-sub">{{template "prlink" .}} · @{{.Author}} · {{.Age}}</div>
+<div class="item-sub">{{template "prlink" .}}{{if .Author}} · {{template "user" .Author}}{{end}} · {{.Age}}</div>
 <div class="item-reason">{{.Reason}}{{if .Action}} → <strong>{{.Action}}</strong>{{end}}</div>
 {{if or .Also .Notes}}<div class="item-also">{{if .Also}}<span>Also: {{join .Also ", "}}</span>{{end}}{{range .Notes}}<span class="note">{{if .URL}}<a href="{{.URL}}">{{.Text}}</a>{{else}}{{.Text}}{{end}}</span>{{end}}</div>{{end}}
 </div>
-<div class="item-meta">{{if .FirstTime}}<span class="pill">first-time</span>{{end}}{{if .Size}}<span class="tag" title="Size">{{.Size}}</span>{{end}}{{if .Milestone}}<span class="tag" title="Milestone">{{.Milestone}}</span>{{end}}<span class="tag" title="Account">@{{.Account}}</span></div>
+<div class="item-meta">{{if .FirstTime}}<span class="pill">first-time</span>{{end}}{{if .Size}}<span class="tag" title="Size">{{.Size}}</span>{{end}}{{if .Milestone}}<span class="tag" title="Milestone">{{.Milestone}}</span>{{end}}<a class="tag" href="{{profile .Account}}" title="Account">@{{.Account}}</a></div>
 </li>{{end}}
 
 {{define "queue-body"}}

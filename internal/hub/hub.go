@@ -3,8 +3,19 @@ package hub
 
 import "sync"
 
-// Event says a PR's stored state or result changed.
+// Kind is what an event reports.
+type Kind uint8
+
+const (
+	// PRChanged says a PR's stored state or result changed.
+	PRChanged Kind = iota
+	// Polled says a repository poll was recorded, successful or not; Number is zero.
+	Polled
+)
+
+// Event is one change notification.
 type Event struct {
+	Kind   Kind
 	RepoID int64
 	Number int
 }

@@ -1,11 +1,20 @@
-// Refreshes the queue on server change events and copies handoff lines.
+// Keeps the queue and the header status live from server events, and copies handoff lines.
 (function () {
   "use strict";
-  var queue = document.getElementById("queue");
-  if (queue && window.EventSource && window.htmx) {
+  function refresh(id) {
+    var el = document.getElementById(id);
+    if (el) {
+      window.htmx.trigger(el, "refresh");
+    }
+  }
+  if (window.EventSource && window.htmx) {
     var source = new EventSource("/events");
     source.addEventListener("change", function () {
-      window.htmx.trigger(queue, "refresh");
+      refresh("queue");
+      refresh("sync");
+    });
+    source.addEventListener("poll", function () {
+      refresh("sync");
     });
   }
   document.addEventListener("click", function (event) {

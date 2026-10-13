@@ -7,7 +7,7 @@
 
 <section id="accounts" class="card"><div class="card-head"><h2>Accounts</h2><span class="muted small">{{len .Accounts}} connected</span></div>
 {{if .Accounts}}<div class="table-scroll"><table><thead><tr><th>Account</th><th>Kind</th><th>Scopes</th><th>Status</th><th>Rate remaining</th><th></th></tr></thead><tbody>
-{{range .Accounts}}<tr><td><strong>@{{.Login}}</strong></td><td><span class="tag">{{.Kind}}</span></td><td class="mono small">{{.Scopes}}</td>
+{{range .Accounts}}<tr><td><a href="{{profile .Login}}"><strong>@{{.Login}}</strong></a></td><td><span class="tag">{{.Kind}}</span></td><td class="mono small">{{.Scopes}}</td>
 <td>{{if .OK}}<span class="pill ok">{{.Status}}</span>{{else}}<span class="pill danger">{{.Status}}</span>{{end}}{{if .Detail}} <span class="muted small">{{.Detail}}</span>{{end}}{{if .PausedUntil}} <span class="pill warn">rate-limit pause until {{.PausedUntil}}</span>{{end}}</td>
 <td class="mono small">{{if .Rates}}{{.Rates}}{{else}}<span class="muted">not polled yet</span>{{end}}</td>
 <td><div class="row-actions"><form method="post" action="/accounts/{{.Login}}/delete"><button class="btn danger" type="submit">Remove</button></form>

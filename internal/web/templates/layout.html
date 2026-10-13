@@ -14,7 +14,7 @@
 <header class="top-nav">
 <a class="top-nav-brand" href="/">{{template "logo"}}<span>Dev<span class="accent">Box</span></span></a>
 <nav class="tabs" aria-label="Primary"><a class="tab{{if eq .Nav "queue"}} active{{end}}" href="/"{{if eq .Nav "queue"}} aria-current="page"{{end}}>Queue</a><a class="tab{{if eq .Nav "settings"}} active{{end}}" href="/settings"{{if eq .Nav "settings"}} aria-current="page"{{end}}>Settings</a></nav>
-<div class="nav-right">{{with .Status.Sync}}<span class="sync sync-{{.State}}">Last checked {{.Checked}} · {{.Mode}}</span>{{end}}
+<div class="nav-right">{{template "sync" .Status.Sync}}
 <form method="post" action="/refresh"><input type="hidden" name="next" value="{{.Path}}"><button class="btn sm" type="submit">Refresh</button></form></div>
 </header>
 <main class="page-content">

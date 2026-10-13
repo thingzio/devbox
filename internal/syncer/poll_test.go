@@ -10,6 +10,7 @@ import (
 
 	"github.com/thingzio/devbox/internal/collect"
 	"github.com/thingzio/devbox/internal/github"
+	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/rules"
 	"github.com/thingzio/devbox/internal/store"
 )
@@ -29,13 +30,28 @@ func TestPollInsertsAndCloses(t *testing.T) {
 	if s := en.state(1); s.State != "closed" {
 		t.Fatalf("missing pr not closed: %+v", s)
 	}
-	select {
-	case ev := <-events:
-		if ev.Number != 1 {
-			t.Fatalf("event = %+v", ev)
+	if changes := prChanges(drain(events)); len(changes) != 1 || changes[0].Number != 1 {
+		t.Fatalf("change events = %+v, want the close of #1", changes)
+	}
+}
+
+func TestPollPublishesPolledEvents(t *testing.T) {
+	en := newEnv(t, Config{})
+	events, unsubscribe := en.hub.Subscribe()
+	defer unsubscribe()
+	en.mustPoll()
+	en.src.set(func(f *fakeSource) { f.fpErr = &github.TransportError{Err: errors.New("network unreachable")} })
+	if _, err := en.poll(); err == nil {
+		t.Fatal("poll should fail")
+	}
+	var polled []hub.Event
+	for _, ev := range drain(events) {
+		if ev.Kind == hub.Polled {
+			polled = append(polled, ev)
 		}
-	default:
-		t.Fatal("close not published")
+	}
+	if len(polled) != 2 || polled[0].RepoID != en.repo.ID || polled[1].RepoID != en.repo.ID {
+		t.Fatalf("polled events = %+v, want one per recorded poll, failed ones included", polled)
 	}
 }
 

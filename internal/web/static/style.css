@@ -151,6 +151,7 @@ pre {
 
 /* Messages and status banners */
 .alerts { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.25rem; }
+.alerts:empty { display: none; }
 .msg { padding: 0.65rem 0.9rem; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); font-size: 0.9rem; }
 .msg.err  { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); background: color-mix(in srgb, var(--danger) 8%, transparent); }
 .msg.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: color-mix(in srgb, var(--warn) 8%, transparent); }
@@ -169,6 +170,7 @@ pre {
   display: inline-block; font-family: var(--font-mono); font-size: 0.75rem; color: var(--muted); white-space: nowrap;
   background: var(--surface-alt); border: 1px solid var(--border); border-radius: 4px; padding: 0.02rem 0.4rem;
 }
+a.tag:hover { color: var(--accent); border-color: var(--accent); text-decoration: none; }
 .flag { color: var(--warn); font-size: 0.8rem; }
 
 /* Buttons and forms */

@@ -184,7 +184,7 @@ func TestSecurityHeadersHostAndOrigin(t *testing.T) {
 
 func TestEventsStream(t *testing.T) {
 	ts := newTestServer(t)
-	ctx, cancel := context.WithCancel(ts.ctx)
+	ctx, cancel := context.WithTimeout(ts.ctx, 5*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.http.URL+"/events", nil)
 	resp, err := ts.client.Do(req)
@@ -200,13 +200,17 @@ func TestEventsStream(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	ts.hub.Publish(hub.Event{RepoID: 4, Number: 9})
+	ts.hub.Publish(hub.Event{Kind: hub.Polled, RepoID: 5})
+	want := []string{"event: change", `data: {"repo":4,"number":9}`, "event: poll", `data: {"repo":5}`}
 	lines := bufio.NewScanner(resp.Body)
-	for lines.Scan() {
-		if lines.Text() == `data: {"repo":4,"number":9}` {
-			return
+	for lines.Scan() && len(want) > 0 {
+		if lines.Text() == want[0] {
+			want = want[1:]
 		}
 	}
-	t.Fatal("event not delivered")
+	if len(want) > 0 {
+		t.Fatalf("events not delivered in order; missing %q", want)
+	}
 }
 
 func TestStaticAssetsMetricsHealth(t *testing.T) {

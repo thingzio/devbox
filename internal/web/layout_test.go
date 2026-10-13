@@ -129,3 +129,54 @@ func TestRepoPageTilesFilterByBucket(t *testing.T) {
 		t.Fatalf("repo fragment:\n%s", frag)
 	}
 }
+
+func TestLiveStatusFragment(t *testing.T) {
+	ts := newTestServer(t)
+	r := ts.repo(ts.account("me"), "o", "r")
+	_, page := ts.get("/settings")
+	assertContains(t, "settings", page, `id="sync"`, `hx-get="/fragments/status"`, `hx-trigger="every 30s, refresh delay:1s"`, `<section id="alerts"`)
+	if strings.Contains(page, "hx-swap-oob") {
+		t.Error("full page marks alerts for an out-of-band swap")
+	}
+	if _, err := ts.db.RecordPoll(ts.ctx, r.ID, t0.Add(-3*time.Minute), errorString("dial tcp: network is unreachable")); err != nil {
+		t.Fatal(err)
+	}
+	code, frag := ts.get("/fragments/status")
+	if code != http.StatusOK || strings.Contains(frag, "<html") {
+		t.Fatalf("status fragment = %d\n%s", code, frag)
+	}
+	assertContains(t, "status fragment", frag, `id="sync"`, "Last checked 3 min ago", "sync-warn",
+		`<section id="alerts" class="alerts" aria-label="Status" hx-swap-oob="true">`, "network is unreachable")
+	if _, err := ts.db.RecordPoll(ts.ctx, r.ID, t0, nil); err != nil {
+		t.Fatal(err)
+	}
+	_, frag = ts.get("/fragments/status")
+	assertContains(t, "status fragment after recovery", frag, "Last checked just now", "sync-ok",
+		`<section id="alerts" class="alerts" aria-label="Status" hx-swap-oob="true"></section>`)
+}
+
+func TestUsernamesLinkToGitHub(t *testing.T) {
+	cases := map[string]string{
+		"alice":           "https://github.com/alice",
+		"dependabot[bot]": "https://github.com/apps/dependabot",
+		"":                "",
+		"a b/c":           "https://github.com/a%20b%2Fc",
+	}
+	for login, want := range cases {
+		if got := profileURL(login); got != want {
+			t.Errorf("profileURL(%q) = %q, want %q", login, got, want)
+		}
+	}
+	ts := newTestServer(t)
+	me, work := ts.account("me"), ts.account("work")
+	ts.repo(work, "o", "r")
+	ts.seed(ts.repo(me, "o", "r"), 1, "One", "https://github.com/o/r/pull/1", "waiting_on_me", `{}`)
+	_, body := ts.get("/")
+	assertContains(t, "queue", body, `<a href="https://github.com/alice">@alice</a>`, `<a class="tag" href="https://github.com/me" title="Account">@me</a>`)
+	_, body = ts.get("/r/o/r")
+	assertContains(t, "repo page", body, `<a href="https://github.com/me">@me</a>, <a href="https://github.com/work">@work</a>`)
+	_, body = ts.get("/r/o/r/1")
+	assertContains(t, "explain page", body, `<a href="https://github.com/me">@me</a>`)
+	_, body = ts.get("/settings")
+	assertContains(t, "settings", body, `<a href="https://github.com/work"><strong>@work</strong></a>`)
+}

@@ -1,6 +1,6 @@
 {{define "content"}}
 <p class="crumb"><a href="/">Queue</a> / {{.Name}}</p>
 <div class="page-head"><div><h1 class="page-title mono">{{.Name}}</h1>
-<p class="sub">Monitored by {{range $i, $a := .Accounts}}{{if $i}}, {{end}}@{{$a}}{{end}} · <a href="{{.GitHubURL}}">Open pull requests on GitHub →</a></p></div></div>
+<p class="sub">Monitored by {{range $i, $a := .Accounts}}{{if $i}}, {{end}}{{template "user" $a}}{{end}} · <a href="{{.GitHubURL}}">Open pull requests on GitHub →</a></p></div></div>
 <div id="queue" hx-get="{{.Queue.FragmentURL}}" hx-trigger="refresh delay:1s" hx-swap="innerHTML">{{template "queue-body" .Queue}}</div>
 {{end}}

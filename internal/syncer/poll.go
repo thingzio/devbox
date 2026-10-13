@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/thingzio/devbox/internal/classify"
+	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/store"
 )
 
@@ -80,6 +81,7 @@ func (e *Engine) recordPoll(ctx context.Context, log *slog.Logger, repo store.Re
 	if err != nil {
 		return 0, errors.Join(pollErr, err)
 	}
+	e.d.Hub.Publish(hub.Event{Kind: hub.Polled, RepoID: repo.ID})
 	if pollErr == nil {
 		return 0, nil
 	}

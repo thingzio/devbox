@@ -143,6 +143,29 @@ func newEnv(t *testing.T, cfg Config) *env {
 	return en
 }
 
+// drain returns the events buffered so far without waiting for more.
+func drain(events <-chan hub.Event) []hub.Event {
+	var out []hub.Event
+	for {
+		select {
+		case ev := <-events:
+			out = append(out, ev)
+		default:
+			return out
+		}
+	}
+}
+
+func prChanges(events []hub.Event) []hub.Event {
+	var out []hub.Event
+	for _, ev := range events {
+		if ev.Kind == hub.PRChanged {
+			out = append(out, ev)
+		}
+	}
+	return out
+}
+
 func (en *env) poll() (int, error) { return en.eng.PollRepo(en.ctx, en.repo.ID) }
 
 func (en *env) mustPoll() {
