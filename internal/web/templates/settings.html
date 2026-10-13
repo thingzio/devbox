@@ -29,8 +29,9 @@
 </section>
 
 {{if .Imports}}<section id="import"><h2>Import from maintainer-sweep</h2>
-{{range .Imports}}<form method="post" action="/import" class="inline"><input type="hidden" name="file" value="{{.}}"><span>{{.}}</span>
+{{if .AccountLogins}}{{range .Imports}}<form method="post" action="/import" class="inline"><input type="hidden" name="file" value="{{.}}"><span>{{.}}</span>
 <select name="account">{{range $.AccountLogins}}<option value="{{.}}">@{{.}}</option>{{end}}</select><button type="submit">Import</button></form>{{end}}
+{{else}}<p>Found {{range $i, $f := .Imports}}{{if $i}}, {{end}}<code>{{$f}}</code>{{end}}. Add an account above to import {{if eq (len .Imports) 1}}it{{else}}them{{end}}.</p>{{end}}
 </section>{{end}}
 
 <section><h2>Polling</h2><p>Every {{.PollInterval}} (set with <code>--poll-interval</code>).</p></section>

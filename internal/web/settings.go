@@ -149,11 +149,25 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	s.renderSettings(w, r, http.StatusOK, "")
 }
 
+// errNoAccount means a form was submitted before any account was chosen.
+var errNoAccount = errors.New("no account chosen")
+
+// chosenAccount resolves the form's account, distinguishing "none chosen" from "gone".
+func (s *Server) chosenAccount(r *http.Request) (store.Account, error) {
+	login := r.PostFormValue("account")
+	if login == "" {
+		return store.Account{}, errNoAccount
+	}
+	return s.o.Store.Account(r.Context(), login)
+}
+
 // reject re-renders settings with a validation message (never echoing tokens).
 func (s *Server) reject(w http.ResponseWriter, r *http.Request, err error) {
 	s.o.Log.Info("settings change rejected", "path", r.URL.Path, "err", err)
 	msg := err.Error()
 	switch {
+	case errors.Is(err, errNoAccount):
+		msg = "Add a GitHub account first, then choose which account monitors the repository."
 	case errors.Is(err, store.ErrExists):
 		msg = "That repository is already monitored by that account."
 	case errors.Is(err, store.ErrNotFound):
@@ -218,7 +232,7 @@ func (s *Server) handleDeviceStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAddRepo(w http.ResponseWriter, r *http.Request) {
-	acct, err := s.o.Store.Account(r.Context(), r.PostFormValue("account"))
+	acct, err := s.chosenAccount(r)
 	if err != nil {
 		s.reject(w, r, err)
 		return
@@ -330,7 +344,7 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, r, fmt.Errorf("%s: %w", file, err))
 		return
 	}
-	acct, err := s.o.Store.Account(r.Context(), r.PostFormValue("account"))
+	acct, err := s.chosenAccount(r)
 	if err != nil {
 		s.reject(w, r, err)
 		return

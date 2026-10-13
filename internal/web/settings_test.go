@@ -237,3 +237,35 @@ func TestSettingsShowsRateRemaining(t *testing.T) {
 		t.Fatalf("rate remaining missing from settings:\n%s", body)
 	}
 }
+
+func writeOverlay(t *testing.T, ts *testServer) {
+	t.Helper()
+	dir := filepath.Join(ts.importDir, "NVIDIA")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "aicr.json"), []byte(`{"stale_days":7}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSettingsWithoutAccountsGuidesInsteadOfFailing(t *testing.T) {
+	ts := newTestServer(t)
+	writeOverlay(t, ts)
+	_, settings := ts.get("/settings")
+	if strings.Contains(settings, `action="/import"`) {
+		t.Fatal("import form rendered with no account to import into")
+	}
+	if !strings.Contains(settings, "NVIDIA/aicr.json") || !strings.Contains(settings, "Add an account above to import") {
+		t.Fatalf("import candidates or guidance missing:\n%s", settings)
+	}
+	for path, form := range map[string]url.Values{
+		"/import": {"file": {"NVIDIA/aicr.json"}},
+		"/repos":  {"repo": {"o/r"}},
+	} {
+		code, body, _ := ts.post(path, form)
+		if code != http.StatusUnprocessableEntity || !strings.Contains(body, "Add a GitHub account first") || strings.Contains(body, "no longer exists") {
+			t.Errorf("POST %s without an account = %d, want a clear add-an-account message", path, code)
+		}
+	}
+}
