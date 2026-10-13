@@ -1,0 +1,102 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: The tag is a semantic version
+        run: |
+          if ! printf '%s' "${GITHUB_REF_NAME}" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$'; then
+            echo "::error::tag ${GITHUB_REF_NAME} is not a semantic version"
+            exit 1
+          fi
+      - name: The tag is annotated and signed
+        run: |
+          if [ "$(git cat-file -t "${GITHUB_REF_NAME}")" != "tag" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} is lightweight; releases are annotated and signed"
+            exit 1
+          fi
+          if ! git cat-file tag "${GITHUB_REF_NAME}" | grep -q -- "-----BEGIN .* SIGNATURE-----"; then
+            echo "::error::tag ${GITHUB_REF_NAME} carries no signature"
+            exit 1
+          fi
+      - name: The tag is on main
+        run: |
+          git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "${GITHUB_REF_NAME}^{commit}" origin/main; then
+            echo "::error::tag ${GITHUB_REF_NAME} is not an ancestor of main"
+            exit 1
+          fi
+
+  versions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.read.outputs.go }}
+      goreleaser: ${{ steps.read.outputs.goreleaser }}
+      syft: ${{ steps.read.outputs.syft }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: read
+        run: |
+          for key in go goreleaser syft; do
+            echo "${key}=$(awk -v k="${key}:" '$1==k{print $2}' .versions.yaml)" >> "$GITHUB_OUTPUT"
+          done
+
+  qualify:
+    needs: [gate, versions]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ needs.versions.outputs.go }}
+      - run: make qualify
+
+  test-macos:
+    needs: [gate, versions]
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ needs.versions.outputs.go }}
+      - run: make test
+
+  release:
+    needs: [qualify, test-macos, versions]
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    uses: thingzio/actions/.github/workflows/release-go.yaml@7276775800dbfef1d9671e60c337f3b4b479a4e8 # v1.8.0
+    with:
+      go_version: ${{ needs.versions.outputs.go }}
+      goreleaser_version: ${{ needs.versions.outputs.goreleaser }}
+      syft_version: ${{ needs.versions.outputs.syft }}
+    secrets:
+      homebrew_deploy_key: ${{ secrets.HOMEBREW_DEPLOY_KEY }}

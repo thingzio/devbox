@@ -1,0 +1,164 @@
+# Release build for the devbox CLI.
+#
+# Every release carries checksums, an SPDX SBOM per archive, a keyless
+# signature over the checksum file, and SLSA build provenance. Signing and
+# attestation happen in thingzio/actions' release-go.yaml, in a job that runs
+# no code from this repository; that isolation is what makes the provenance
+# SLSA Build Level 3. release-go.yaml passes --skip=sign, so there is
+# deliberately no `signs:` block here.
+version: 2
+
+project_name: devbox
+
+before:
+  hooks:
+    - go mod download
+    - go mod verify
+
+builds:
+  - id: devbox
+    main: ./cmd/devbox
+    binary: devbox
+    env:
+      # A static binary runs on whatever the user has; the result does not
+      # depend on the build host's system libraries.
+      - CGO_ENABLED=0
+    flags:
+      # Absolute paths leak the builder's filesystem and make builds differ.
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/thingzio/devbox/internal/version.Version={{ .Version }}
+    goos:
+      - darwin
+      - linux
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    mod_timestamp: '{{ .CommitTimestamp }}'
+
+archives:
+  - id: devbox
+    ids:
+      - devbox
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+      - SECURITY.md
+      - THIRD_PARTY_NOTICES.md
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+sboms:
+  - id: archive-sboms
+    artifacts: archive
+    documents:
+      - '${artifact}.spdx.json'
+
+# Homebrew cask in the shared org tap, so `brew install thingzio/tap/devbox`
+# works. Guarded by HOMEBREW_DEPLOY_KEY (a token with contents:write on
+# thingzio/homebrew-tap): without it the cask is neither uploaded nor probed,
+# and `auto` also skips prereleases.
+#
+# A cask rather than a formula: these are prebuilt, attested binaries, and a
+# formula would build from source a binary nobody attested to.
+homebrew_casks:
+  - name: devbox
+    repository:
+      owner: thingzio
+      name: homebrew-tap
+      token: '{{ .Env.HOMEBREW_DEPLOY_KEY }}'
+    homepage: https://github.com/thingzio/devbox
+    description: Triage your GitHub pull request review queue at a glance
+    skip_upload: '{{ if index .Env "HOMEBREW_DEPLOY_KEY" }}auto{{ else }}true{{ end }}'
+    # The binaries are signed but not Apple-notarized, so Gatekeeper would
+    # refuse to run them; strip the quarantine flag on install. Written as
+    # postflight_steps (Homebrew deprecated the raw postflight block that
+    # hooks.post.install emits); the inner braces are escaped because
+    # {{staged_path}} is Homebrew's token, resolved at install time.
+    custom_block: |
+      postflight_steps do
+        on_macos do
+          run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ "{{staged_path}}" }}/devbox"]
+        end
+      end
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-next'
+
+# Commits land on main directly rather than through pull requests, so the
+# notes come from the commit log, grouped by Conventional Commit type.
+changelog:
+  use: git
+  sort: asc
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Other changes
+      order: 999
+  filters:
+    exclude:
+      - '^docs(\(.+\))?:'
+      - '^test(\(.+\))?:'
+      - '^ci(\(.+\))?:'
+      - '^chore(\(.+\))?:'
+      - '^Merge '
+
+release:
+  # Created as a draft and published by release-go.yaml only after the
+  # signature verifies, so a release is never visible unsigned.
+  draft: true
+  # GitHub does not return drafts by tag; without this a re-run opens a second
+  # draft for the same tag.
+  use_existing_draft: true
+  prerelease: auto
+  footer: |
+    ## Install
+
+    ```bash
+    brew install thingzio/tap/devbox
+    ```
+
+    Or download the archive for your platform below, unpack it, and run `devbox serve`.
+
+    ## Verifying this release
+
+    Every artifact is covered by `checksums.txt`, signed with a Sigstore keyless
+    signature. Verify the signature first, then the checksums:
+
+    ```bash
+    cosign verify-blob checksums.txt \
+      --bundle checksums.txt.bundle \
+      --certificate-identity-regexp '^https://github\.com/thingzio/actions/\.github/workflows/release-go\.yaml@' \
+      --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+    sha256sum --check --ignore-missing checksums.txt
+    ```
+
+    Build provenance (SLSA Build Level 3) is attested separately:
+
+    ```bash
+    gh attestation verify devbox_*_linux_amd64.tar.gz \
+      --repo thingzio/devbox \
+      --signer-workflow thingzio/actions/.github/workflows/release-go.yaml
+    ```
+
+    An SPDX SBOM accompanies each archive.

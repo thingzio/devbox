@@ -4,13 +4,21 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Weekly, so newly published vulnerabilities in dependencies surface between pushes.
+  schedule:
+    - cron: '17 6 * * 1'
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   versions:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     outputs:
       go: ${{ steps.read.outputs.go }}
       golangci: ${{ steps.read.outputs.golangci }}
@@ -26,6 +34,7 @@ jobs:
   test:
     needs: versions
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,6 +48,7 @@ jobs:
   lint:
     needs: versions
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       CGO_ENABLED: "0"
     steps:
@@ -51,10 +61,15 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: ${{ needs.versions.outputs.golangci }}
+      - name: Workflows
+        run: make actionlint
+      - name: Third-party notices are current
+        run: make notices-check
 
   vuln:
     needs: versions
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -64,15 +79,34 @@ jobs:
           go-version: ${{ needs.versions.outputs.go }}
       - run: make vuln
 
-  cross:
-    needs: versions
+  secrets:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: versions
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ needs.versions.outputs.go }}
-      - name: Cross-compile without CGO
-        run: make cross
+      - name: Scan the full history for secrets
+        run: make secrets
+
+  release-build:
+    needs: versions
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ needs.versions.outputs.go }}
+      - name: Release config is valid
+        run: make release-check
+      - name: Every release platform builds
+        run: make snapshot

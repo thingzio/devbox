@@ -1,4 +1,10 @@
-# Single source of truth for toolchain versions (read by Makefile and CI).
+# Single source of truth for toolchain versions, read by the Makefile and CI.
+# A version that appears only in a Makefile recipe or only in a workflow step
+# is a bug: the two drift, and "works on my machine" stops being reproducible.
 go: 1.27.2
 golangci-lint: v2.14.0
 govulncheck: v1.9.0
+actionlint: v1.7.12
+gitleaks: v8.30.1
+goreleaser: v2.18.3
+syft: v1.54.1

@@ -1,8 +1,14 @@
 SHELL := /bin/bash
 
 VERSIONS              := .versions.yaml
-GOLANGCI_LINT_VERSION := $(shell awk '$$1=="golangci-lint:"{print $$2}' $(VERSIONS))
-GOVULNCHECK_VERSION   := $(shell awk '$$1=="govulncheck:"{print $$2}' $(VERSIONS))
+pin                    = $(shell awk '$$1=="$(1):"{print $$2}' $(VERSIONS))
+GOLANGCI_LINT_VERSION := $(call pin,golangci-lint)
+GOVULNCHECK_VERSION   := $(call pin,govulncheck)
+ACTIONLINT_VERSION    := $(call pin,actionlint)
+GITLEAKS_VERSION      := $(call pin,gitleaks)
+GORELEASER_VERSION    := $(call pin,goreleaser)
+# goreleaser refuses to run with more than one forge token set.
+GORELEASER            := env -u GITLAB_TOKEN -u GITEA_TOKEN go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 VERSION               ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 CLIENT_ID             ?=
 LDFLAGS               := -s -w \
@@ -11,7 +17,10 @@ LDFLAGS               := -s -w \
 BIN                   := bin/devbox
 PLATFORMS             := darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64
 
-.PHONY: build test fmt lint vuln cover run fixtures cross
+.PHONY: build test fmt lint vuln cover run fixtures cross qualify actionlint secrets notices notices-check release-check snapshot release-tag
+
+# The gate CI runs; if it passes here, CI passes.
+qualify: lint actionlint vuln cover cross notices-check
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/devbox
@@ -45,3 +54,27 @@ cross:
 	  CGO_ENABLED=0 GOOS=$$os GOARCH=$$arch go build -trimpath -ldflags '$(LDFLAGS)' \
 	    -o bin/devbox-$$os-$$arch$$ext ./cmd/devbox; \
 	done
+
+actionlint:
+	CGO_ENABLED=0 go run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION)
+
+# Scans the full git history, not just the working tree.
+secrets:
+	CGO_ENABLED=0 go run github.com/zricethezav/gitleaks/v8@$(GITLEAKS_VERSION) git --no-banner --redact .
+
+notices:
+	python3 hack/gen-third-party-notices
+
+notices-check: notices
+	@git diff --exit-code -- THIRD_PARTY_NOTICES.md || { echo "THIRD_PARTY_NOTICES.md is stale: run make notices and commit it"; exit 1; }
+
+release-check:
+	CGO_ENABLED=0 $(GORELEASER) check
+
+# A local dry run of the release build; signing, SBOMs, and publishing happen only in CI.
+snapshot:
+	CGO_ENABLED=0 $(GORELEASER) release --snapshot --clean --skip=sign,sbom,publish
+
+# Cuts a release: make release-tag VERSION=v0.1.0 (see RELEASING.md).
+release-tag:
+	./hack/release-tag.sh $(VERSION)
