@@ -11,9 +11,10 @@ GORELEASER_VERSION    := $(call pin,goreleaser)
 GORELEASER            := env -u GITLAB_TOKEN -u GITEA_TOKEN go run github.com/goreleaser/goreleaser/v2@$(GORELEASER_VERSION)
 VERSION               ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 CLIENT_ID             ?=
-LDFLAGS               := -s -w \
-  -X github.com/thingzio/devbox/internal/version.Version=$(VERSION) \
-  -X github.com/thingzio/devbox/internal/auth.DefaultClientID=$(CLIENT_ID)
+LDFLAGS               := -s -w -X github.com/thingzio/devbox/internal/version.Version=$(VERSION)
+ifneq ($(CLIENT_ID),)
+LDFLAGS               += -X github.com/thingzio/devbox/internal/auth.DefaultClientID=$(CLIENT_ID)
+endif
 BIN                   := bin/devbox
 PLATFORMS             := darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64
 

@@ -59,8 +59,9 @@ make leaks     # gitleaks over the full git history
 `make qualify` is the same gate CI runs. If it passes locally it should pass in
 CI; if it does not, that is worth an issue.
 
-`make build CLIENT_ID=<id>` bakes in the OAuth App client ID that enables
-**Sign in with GitHub**; without it, use a classic token, or set
+**Sign in with GitHub** uses the `thingzio` OAuth App, whose public client ID
+is the default in `internal/auth`. To point a build at another OAuth App (with
+Device Flow enabled), use `make build CLIENT_ID=<id>` or set
 `DEVBOX_GITHUB_CLIENT_ID` at runtime.
 
 To try a change against real data, run `./bin/devbox serve --debug --db /tmp/devbox.db`

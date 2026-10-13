@@ -11,9 +11,11 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// DefaultClientID is the thingzio OAuth App client ID, set at build time with
-// -ldflags "-X github.com/thingzio/devbox/internal/auth.DefaultClientID=...".
-var DefaultClientID = ""
+// DefaultClientID is the thingzio OAuth App's client ID. Device-flow client
+// IDs are public by design (no client secret is involved), so it ships in
+// source; -ldflags "-X github.com/thingzio/devbox/internal/auth.DefaultClientID=..."
+// replaces it in a custom build.
+var DefaultClientID = "Ov23liiJyzLATLhYZScs"
 
 // ClientIDEnv overrides DefaultClientID.
 const ClientIDEnv = "DEVBOX_GITHUB_CLIENT_ID"

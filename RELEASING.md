@@ -94,4 +94,3 @@ Nothing here is enforced by tooling, which is why it is written down:
 - [ ] CI is green on the commit being tagged
 - [ ] Anything user-visible is reflected in `README.md`
 - [ ] `THIRD_PARTY_NOTICES.md` is current (`make notices`; CI checks it)
-- [ ] The OAuth App client ID is set, so release builds offer **Sign in with GitHub**
