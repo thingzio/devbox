@@ -27,7 +27,7 @@ func TestQueueRendersRanksAndEscapes(t *testing.T) {
 	}
 	for _, want := range []string{
 		"&lt;script&gt;alert(1)&lt;/script&gt;", "first-time", ">L<", ">v1<", "2 days", "@me",
-		`href="https://github.com/o/r/pull/1#discussion_r1"`, "approved by @bob", "2 actions: 1 Waiting on me, 1 Needs initial review",
+		`href="https://github.com/o/r/pull/1#discussion_r1"`, "approved by @bob", `<span class="stat-n">2</span><span class="stat-l">All actions</span>`,
 		`hx-get="/fragments/queue"`,
 	} {
 		if !strings.Contains(body, want) {

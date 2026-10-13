@@ -1,12 +1,20 @@
 {{define "content"}}
-{{range .}}
+{{range $v := .}}
 <article class="explain">
-<h1>{{template "prlink" .Link}} {{.Title}}</h1>
-<p class="meta">@{{.Account}} · {{.State}} · revision {{.Revision}}</p>
-{{with .Result}}<section><h2>Result</h2><p><strong>{{.Bucket}}</strong>: {{.Reason}}{{if .Action}} → {{.Action}}{{end}}</p>
-{{if .Also}}<p>also: {{join .Also ", "}}</p>{{end}}{{range .Notes}}<p class="note">{{.}}</p>{{end}}</section>{{else}}<p>Not classified yet.</p>{{end}}
-<section><h2>Evidence</h2><table>{{range .Evidence}}<tr><th>{{.Label}}</th><td>{{.Value}}</td></tr>{{end}}</table></section>
-<section><h2>History</h2><ol>{{range .Transitions}}<li>{{.At}}: {{.From}} → {{.To}} ({{.Reason}})</li>{{else}}<li>No transitions yet.</li>{{end}}</ol></section>
+<p class="crumb"><a href="/">Queue</a> / <a href="{{.RepoURL}}">{{.Link.Repo}}</a> / #{{.Link.Number}}</p>
+<div class="page-head"><div><h1 class="page-title">{{.Title}}</h1>
+<p class="sub mono">{{template "prlink" .Link}} · @{{.Account}} · {{.State}} · revision {{.Revision}}</p></div></div>
+<section class="card verdict tone-{{.Tone}}">
+{{with .Result}}<div class="card-head"><h2><span class="dot"></span>{{$v.BucketTitle}}</h2><span class="tag">{{.Bucket}}</span></div>
+<p class="verdict-reason">{{.Reason}}{{if .Action}} → <strong>{{.Action}}</strong>{{end}}</p>
+{{if .Also}}<p class="muted">Also: {{join .Also ", "}}</p>{{end}}
+{{if .Notes}}<ul class="notes">{{range .Notes}}<li>{{.}}</li>{{end}}</ul>{{end}}
+{{else}}<p class="muted">Not classified yet.</p>{{end}}
+</section>
+<div class="detail-cols">
+<section class="card"><h2>Evidence</h2><dl class="detail-grid">{{range .Evidence}}<dt>{{.Label}}</dt><dd>{{.Value}}</dd>{{end}}</dl></section>
+<section class="card"><h2>History</h2><ol class="timeline">{{range .Transitions}}<li><span class="mono">{{.From}} → {{.To}}</span><span class="muted small">{{.At}} · {{.Reason}}</span></li>{{else}}<li class="muted">No transitions yet.</li>{{end}}</ol></section>
+</div>
 </article>
 {{end}}
 {{end}}

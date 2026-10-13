@@ -733,12 +733,12 @@ change bucket move correctly. Unified and per-repo views use the ranking in 5.8.
 
 | Route | Content |
 |-------|---------|
-| `GET /` | Unified queue: action buckets in precedence order with counts; rows: repo · `#n` title · `@author` · age · reason → action; account badge; `also`/notes line; badges: first-time contributor, size, milestone. Then ready-to-merge links; waiting-on-author / own / draft counts; unclassified with errors. Filters: repo, account, bucket (query params). Sort keys displayed. |
-| `GET /r/{owner}/{name}` | Single-repo sweep layout: totals line, buckets, handoff lines with copy button, ready to merge, counts, unclassified. |
+| `GET /` | Unified queue. Stat tiles: all actions plus one per action bucket (precedence order, colored by severity); each tile filters to its bucket and clicking the selected tile clears it. Main column: one card per action bucket with its count; rows: title · repo `#n` · `@author` · age · reason → action; `also`/notes line; tags: first-time contributor, size, milestone, account. Sidebar: ready-to-merge links, waiting-on-author / own / draft counts (each a bucket filter), every enabled repository with its action count (links to its page), unclassified with errors. Filters: repo, account, bucket (query params); any bucket, including non-action ones, can be selected. Sort keys displayed. |
+| `GET /r/{owner}/{name}` | Single-repo layout: the same tiles, cards, and sidebar scoped to the repository, plus handoff lines with copy button; `?bucket=` filters. |
 | `GET /r/{owner}/{name}/{n}` | Explain view: result, evidence summary from the record, transition history. |
 | `GET /settings` | Accounts (status, kind, scopes, rate remaining, pause state), repos (add, enable/disable, remove, rules editor with validation errors and an explanation of each rule), import from `~/.config/maintainer-sweep/repos/**.json` (one-time, per file, choose account; listed with guidance until an account exists), polling dropdown (Default from `--poll-interval`, Manual, 1m–15m presets). |
 | `POST /settings/polling` | Save the polling choice (`default` clears it) and apply it to the running engine. |
-| `POST /refresh` | Check every enabled repository now; the queue shows "Last checked" and the polling mode next to the Refresh button. |
+| `POST /refresh` | Check every enabled repository now, then return to the page it was pressed on (`next`, local paths only). Every page's header shows "Last checked", the polling mode, and the Refresh button. |
 | `POST /accounts/device`, `GET /accounts/device/{flow}` | Start and poll device flow. |
 | `POST /accounts/pat`, `POST /accounts/{login}/delete` | PAT add, account removal. |
 | `POST /repos`, `POST /repos/{id}/(enable\|disable\|delete\|rules)` | Repo management. |
@@ -746,8 +746,12 @@ change bucket move correctly. Unified and per-repo views use the ranking in 5.8.
 | `GET /metrics` | Prometheus exposition. |
 | `GET /healthz` | Liveness. |
 
-A header bar shows per-repo staleness when `now - last_success_at > 3m` (not in
-manual mode, where the queue's "Last checked" replaces it), account
+Pages follow the thingz.io app style (DevRadar's tokens: light by default,
+dark via `prefers-color-scheme`): a brand bar with the DevBox mark, Queue and
+Settings tabs, and the sync heartbeat; a footer with the version, metrics,
+health, and source links. Status banners show per-repo staleness when
+`now - last_success_at > 3m` (not in manual mode, where the header's "Last
+checked" replaces it), account
 `needs_auth` banners with a re-authenticate action, and rate-limit pauses with
 resume time. A successful fingerprint poll does not imply all evidence reads
 succeeded: separately show pending enrichment, fatal errors, and optional

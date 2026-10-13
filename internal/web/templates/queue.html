@@ -1,11 +1,13 @@
 {{define "content"}}
-<form class="refresh" method="post" action="/refresh"><button type="submit">Refresh</button> <span class="meta">Last checked {{.LastChecked}} · {{.PollingLabel}}</span></form>
-<form class="filters" method="get" action="/">
-<label>Account <select name="account"><option value="">all</option>{{range .Accounts}}<option value="{{.}}"{{if eq . $.Filter.Account}} selected{{end}}>@{{.}}</option>{{end}}</select></label>
-<label>Bucket <select name="bucket"><option value="">all</option>{{range .BucketOptions}}<option value="{{.ID}}"{{if eq .ID $.Filter.Bucket}} selected{{end}}>{{.Title}}</option>{{end}}</select></label>
-<label>Repository <input name="repo" value="{{.RepoFilter}}" placeholder="owner/name"></label>
-<button type="submit">Filter</button>
+<div class="page-head">
+<div><h1 class="page-title">Queue</h1><p class="sub">Triage pull requests at a glance. Rank, explain, and hand off reviews before they go stale.</p></div>
+<form class="filterbar" method="get" action="/">
+{{if .Filter.Bucket}}<input type="hidden" name="bucket" value="{{.Filter.Bucket}}">{{end}}
+<label class="field"><span class="field-cap">Account</span><select name="account"><option value="">All accounts</option>{{range .Accounts}}<option value="{{.}}"{{if eq . $.Filter.Account}} selected{{end}}>@{{.}}</option>{{end}}</select></label>
+<label class="field"><span class="field-cap">Repository</span><select name="repo"><option value="">All repositories</option>{{range .RepoOptions}}<option value="{{.}}"{{if eq . $.RepoFilter}} selected{{end}}>{{.}}</option>{{end}}</select></label>
+<button class="btn secondary" type="submit">Apply</button>
 </form>
-<p class="sortkeys">Buckets in precedence order; within a bucket: milestone due soonest, first-time contributors, waiting longest, PR number.</p>
+</div>
 <div id="queue" hx-get="{{.FragmentURL}}" hx-trigger="refresh delay:1s" hx-swap="innerHTML">{{template "queue-body" .}}</div>
+<p class="footnote">Buckets in precedence order; within a bucket: milestone due soonest, first-time contributors, waiting longest, PR number.</p>
 {{end}}

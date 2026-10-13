@@ -1,25 +1,49 @@
-{{define "status"}}{{if or .Accounts .Paused .Repos}}<section class="status" aria-label="status">
-{{range .Accounts}}<p class="banner warn">@{{.Login}} needs re-authentication: {{.Detail}} <a href="/settings#accounts">Re-authenticate</a></p>{{end}}
-{{range .Paused}}<p class="banner">@{{.Account}} is paused for rate limits until {{.Until}}</p>{{end}}
-{{range .Repos}}<p class="banner {{.Level}}"><strong>{{.Name}}</strong>: {{join .Messages "; "}}</p>{{end}}
+{{define "status"}}{{if or .Accounts .Paused .Repos}}<section class="alerts" aria-label="Status">
+{{range .Accounts}}<p class="msg err">@{{.Login}} needs re-authentication: {{.Detail}} <a href="/settings#accounts">Re-authenticate</a></p>{{end}}
+{{range .Paused}}<p class="msg warn">@{{.Account}} is paused for rate limits until {{.Until}}</p>{{end}}
+{{range .Repos}}<p class="msg {{.Level}}"><strong>{{.Name}}</strong>: {{join .Messages "; "}}</p>{{end}}
 </section>{{end}}{{end}}
 
 {{define "prlink"}}{{if .URL}}<a href="{{.URL}}">{{.Repo}}#{{.Number}}</a>{{else}}{{.Repo}}#{{.Number}}{{end}}{{end}}
 
-{{define "row"}}<li class="row">
-<div>{{template "prlink" .}} <a class="title" href="{{.ExplainURL}}">{{.Title}}</a> · @{{.Author}} · {{.Age}} · {{.Reason}}{{if .Action}} → <strong>{{.Action}}</strong>{{end}}
-<span class="badges"><span class="badge account">@{{.Account}}</span>{{if .FirstTime}}<span class="badge first">first-time</span>{{end}}{{if .Size}}<span class="badge size">{{.Size}}</span>{{end}}{{if .Milestone}}<span class="badge milestone">{{.Milestone}}</span>{{end}}</span></div>
-{{if or .Also .Notes}}<div class="also">{{if .Also}}also: {{join .Also ", "}}{{end}}{{range .Notes}}<span class="note">{{if .URL}}<a href="{{.URL}}">{{.Text}}</a>{{else}}{{.Text}}{{end}}</span>{{end}}</div>{{end}}
+{{define "row"}}<li class="item">
+<div class="item-main">
+<a class="item-title" href="{{.ExplainURL}}">{{.Title}}</a>
+<div class="item-sub">{{template "prlink" .}} · @{{.Author}} · {{.Age}}</div>
+<div class="item-reason">{{.Reason}}{{if .Action}} → <strong>{{.Action}}</strong>{{end}}</div>
+{{if or .Also .Notes}}<div class="item-also">{{if .Also}}<span>Also: {{join .Also ", "}}</span>{{end}}{{range .Notes}}<span class="note">{{if .URL}}<a href="{{.URL}}">{{.Text}}</a>{{else}}{{.Text}}{{end}}</span>{{end}}</div>{{end}}
+</div>
+<div class="item-meta">{{if .FirstTime}}<span class="pill">first-time</span>{{end}}{{if .Size}}<span class="tag" title="Size">{{.Size}}</span>{{end}}{{if .Milestone}}<span class="tag" title="Milestone">{{.Milestone}}</span>{{end}}<span class="tag" title="Account">@{{.Account}}</span></div>
 </li>{{end}}
 
 {{define "queue-body"}}
-{{if .EmptyMessage}}<p class="empty">{{.EmptyMessage}}</p>{{end}}
-{{if .Totals}}<p class="totals">{{.Totals}}</p>{{end}}
-{{range .Buckets}}<section class="bucket" id="{{.ID}}"><h2>{{.Title}} ({{len .Rows}})</h2>
-<ul>{{range .Rows}}{{template "row" .}}{{end}}</ul>
-{{if .Handoff}}<p class="handoff"><code>{{.Handoff}}</code> <button type="button" class="copy" data-copy="{{.Handoff}}">Copy</button></p>{{end}}
+<nav class="stats" aria-label="Buckets">{{range .Tiles}}<a class="stat tone-{{.Tone}}{{if not .Count}} zero{{end}}" href="{{.URL}}"{{if .Active}} aria-current="true"{{end}}><span class="stat-n">{{.Count}}</span><span class="stat-l">{{.Title}}</span></a>{{end}}</nav>
+<div class="queue-grid">
+<div class="queue-main">
+{{if .EmptyMessage}}<div class="card empty"><p>{{.EmptyMessage}}</p></div>{{end}}
+{{range .Buckets}}<section class="card bucket tone-{{.Tone}}" id="{{.ID}}">
+<div class="card-head"><h2><span class="dot"></span>{{.Title}} ({{len .Rows}})</h2><a href="{{.Link}}">{{.LinkLabel}} →</a></div>
+<ul class="items">{{range .Rows}}{{template "row" .}}{{end}}</ul>
+{{if .Handoff}}<div class="handoff"><code>{{.Handoff}}</code><button type="button" class="copy" data-copy="{{.Handoff}}">Copy</button></div>{{end}}
 </section>{{end}}
-{{if .Ready}}<p class="ready">Ready to merge: {{range .Ready}}{{template "prlink" .}} {{end}}</p>{{end}}
-<p class="counts">Waiting on author: {{.Counts.WaitingOnAuthor}} · own: {{.Counts.Own}} · drafts: {{.Counts.Draft}}</p>
-{{if .Unclassified}}<section class="bucket"><h2>Unclassified ({{len .Unclassified}})</h2><ul>{{range .Unclassified}}<li class="row">{{template "prlink" .}} <a href="{{.ExplainURL}}">{{.Title}}</a>: {{.Reason}}</li>{{end}}</ul></section>{{end}}
+</div>
+<aside class="queue-side">
+<section class="card side-card tone-ok">
+<div class="card-head"><h2>Ready to merge</h2><a href="{{.ReadyURL}}">View →</a></div>
+{{if .Ready}}<ul class="side-list">{{range .Ready}}<li><a href="{{.ExplainURL}}">{{.Title}}</a><span class="mono">{{template "prlink" .}}</span></li>{{end}}</ul>{{else}}<p class="muted small">Nothing approved and ready yet.</p>{{end}}
+</section>
+<section class="card side-card">
+<div class="card-head"><h2>Not waiting on you</h2></div>
+<ul class="side-counts">{{range .Others}}<li><a href="{{.URL}}"{{if .Active}} aria-current="true"{{end}}>{{.Title}}</a><span class="count">{{.Count}}</span></li>{{end}}</ul>
+</section>
+<section class="card side-card">
+<div class="card-head"><h2>Repositories</h2><a href="/settings#repos">Manage →</a></div>
+{{if .Repos}}<ul class="side-counts">{{range .Repos}}<li><a class="mono" href="{{.URL}}"{{if .Active}} aria-current="true"{{end}}>{{.Title}}</a><span class="count">{{.Count}}</span></li>{{end}}</ul>{{else}}<p class="muted small">No repositories yet.</p>{{end}}
+</section>
+{{if .Unclassified}}<section class="card side-card tone-muted">
+<div class="card-head"><h2>Unclassified ({{len .Unclassified}})</h2></div>
+<ul class="side-list">{{range .Unclassified}}<li><a href="{{.ExplainURL}}">{{.Title}}</a><span>{{.Reason}}</span></li>{{end}}</ul>
+</section>{{end}}
+</aside>
+</div>
 {{end}}

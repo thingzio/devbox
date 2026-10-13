@@ -4,14 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false,"selfRequestsOnly":true}'>
-<title>{{.Title}} · devbox</title>
+<title>{{.Title}} · DevBox</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/style.css">
 <script src="/static/htmx.min.js"></script>
 <script src="/static/app.js" defer></script>
 </head>
 <body>
-<header class="top"><a class="brand" href="/">devbox</a><nav><a href="/"{{if eq .Nav "queue"}} aria-current="page"{{end}}>Queue</a><a href="/settings"{{if eq .Nav "settings"}} aria-current="page"{{end}}>Settings</a></nav></header>
+<header class="top-nav">
+<a class="top-nav-brand" href="/">{{template "logo"}}<span>Dev<span class="accent">Box</span></span></a>
+<nav class="tabs" aria-label="Primary"><a class="tab{{if eq .Nav "queue"}} active{{end}}" href="/"{{if eq .Nav "queue"}} aria-current="page"{{end}}>Queue</a><a class="tab{{if eq .Nav "settings"}} active{{end}}" href="/settings"{{if eq .Nav "settings"}} aria-current="page"{{end}}>Settings</a></nav>
+<div class="nav-right">{{with .Status.Sync}}<span class="sync sync-{{.State}}">Last checked {{.Checked}} · {{.Mode}}</span>{{end}}
+<form method="post" action="/refresh"><input type="hidden" name="next" value="{{.Path}}"><button class="btn sm" type="submit">Refresh</button></form></div>
+</header>
+<main class="page-content">
 {{template "status" .Status}}
-<main>{{template "content" .Body}}</main>
+{{template "content" .Body}}
+</main>
+<footer class="page-footer">
+<div class="footer-meta"><span class="copyright">© {{.Year}} thingz.io</span><span>Version {{.Version}}</span></div>
+<nav class="footer-links" aria-label="Footer"><a href="/metrics">Metrics</a> · <a href="/healthz">Health</a> · <a href="https://github.com/thingzio/devbox" rel="noopener noreferrer">Source</a></nav>
+</footer>
 </body>
 </html>{{end}}
+
+{{define "logo"}}<svg class="nav-logo" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="2"/><path d="M12 4.5V2.5"/><path d="M9.5 5.5 8.1 4.1"/><path d="M14.5 5.5 15.9 4.1"/><path d="M3 13v6a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-6"/><path d="M3 13h5l1.5 2.5h5L16 13h5"/></svg>{{end}}

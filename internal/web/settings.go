@@ -139,11 +139,13 @@ func parseRepoReference(input string) (string, string, error) {
 
 type accountView struct {
 	Login, Kind, Scopes, Status, Detail, PausedUntil, Rates string
+	OK                                                      bool
 }
 
 type repoSettingsView struct {
 	ID        int64
 	Name      string
+	URL       string
 	Account   string
 	Enabled   bool
 	RulesJSON string
@@ -188,7 +190,7 @@ func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
 	}
 	for _, a := range accounts {
 		v.Accounts = append(v.Accounts, accountView{Login: a.Login, Kind: a.Kind, Scopes: strings.Join(a.Scopes, ", "),
-			Status: a.Status, Detail: a.StatusDetail, PausedUntil: paused[a.Login], Rates: rates[a.Login]})
+			Status: a.Status, Detail: a.StatusDetail, PausedUntil: paused[a.Login], Rates: rates[a.Login], OK: a.Status == store.StatusOK})
 		v.AccountLogins = append(v.AccountLogins, a.Login)
 	}
 	statuses, err := s.o.Store.RepoStatuses(ctx)
@@ -196,7 +198,7 @@ func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
 		return v, err
 	}
 	for _, st := range statuses {
-		v.Repos = append(v.Repos, repoSettingsView{ID: st.Repo.ID, Name: st.Repo.FullName(), Account: st.Repo.Account,
+		v.Repos = append(v.Repos, repoSettingsView{ID: st.Repo.ID, Name: st.Repo.FullName(), URL: repoURL(st.Repo.Owner, st.Repo.Name), Account: st.Repo.Account,
 			Enabled: st.Repo.Enabled, RulesJSON: st.Repo.Rules.JSON(), LastError: st.Sync.LastError})
 	}
 	return v, nil

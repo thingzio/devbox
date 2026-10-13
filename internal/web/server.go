@@ -19,6 +19,7 @@ import (
 	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/store"
 	"github.com/thingzio/devbox/internal/syncer"
+	"github.com/thingzio/devbox/internal/version"
 )
 
 //go:embed templates/*.html
@@ -177,14 +178,18 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 }
 
 type pageData struct {
-	Title  string
-	Nav    string // "queue" or "settings"; repo and explain pages belong to the queue
-	Status statusView
-	Body   any
+	Title   string
+	Nav     string // "queue" or "settings"; repo and explain pages belong to the queue
+	Path    string // request path and query, where Refresh returns to
+	Version string
+	Year    int
+	Status  statusView
+	Body    any
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, status int, data pageData) {
 	data.Status = s.buildStatus(r.Context())
+	data.Path, data.Version, data.Year = r.URL.RequestURI(), version.Version, s.o.Now().Year()
 	data.Nav = "queue"
 	if page == "settings" {
 		data.Nav = "settings"

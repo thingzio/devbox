@@ -15,6 +15,9 @@
     }
     navigator.clipboard.writeText(button.getAttribute("data-copy")).then(function () {
       button.textContent = "Copied";
+      setTimeout(function () {
+        button.textContent = "Copy";
+      }, 2000);
     });
   });
 })();

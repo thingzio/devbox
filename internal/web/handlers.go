@@ -1,11 +1,11 @@
 package web
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -24,9 +24,10 @@ func queueFilter(r *http.Request) (store.QueueFilter, string) {
 	return f, repo
 }
 
-func fragmentURL(path string, f store.QueueFilter, repo string) string {
+// queueLink builds a queue page or fragment URL carrying the given filters.
+func queueLink(path, account, repo, bucket string) string {
 	v := url.Values{}
-	for k, val := range map[string]string{"account": f.Account, "bucket": f.Bucket, "repo": repo} {
+	for k, val := range map[string]string{"account": account, "bucket": bucket, "repo": repo} {
 		if val != "" {
 			v.Set(k, val)
 		}
@@ -39,14 +40,17 @@ func fragmentURL(path string, f store.QueueFilter, repo string) string {
 
 func (s *Server) queueForRequest(r *http.Request) (queueView, error) {
 	f, repo := queueFilter(r)
-	view, err := s.buildQueue(r.Context(), f, false)
+	view, err := s.buildQueue(r.Context(), queueQuery{filter: f, repo: repo, base: "/"})
 	if err != nil {
 		return queueView{}, err
 	}
 	view.RepoFilter = repo
-	view.FragmentURL = fragmentURL("/fragments/queue", f, repo)
-	if err := s.fillRefresh(r.Context(), &view); err != nil {
-		return queueView{}, err
+	view.FragmentURL = queueLink("/fragments/queue", f.Account, repo, f.Bucket)
+	for _, l := range view.Repos {
+		view.RepoOptions = append(view.RepoOptions, l.Title)
+	}
+	if repo != "" && !slices.Contains(view.RepoOptions, repo) {
+		view.RepoOptions = append(view.RepoOptions, repo)
 	}
 	accounts, err := s.o.Store.Accounts(r.Context())
 	if err != nil {
@@ -56,29 +60,6 @@ func (s *Server) queueForRequest(r *http.Request) (queueView, error) {
 		view.Accounts = append(view.Accounts, a.Login)
 	}
 	return view, nil
-}
-
-// fillRefresh reports when repositories were last checked and how polling runs.
-func (s *Server) fillRefresh(ctx context.Context, view *queueView) error {
-	statuses, err := s.o.Store.RepoStatuses(ctx)
-	if err != nil {
-		return err
-	}
-	var last *time.Time
-	for _, st := range statuses {
-		if st.Repo.Enabled && st.Sync.LastPollAt != nil && (last == nil || st.Sync.LastPollAt.After(*last)) {
-			last = st.Sync.LastPollAt
-		}
-	}
-	view.LastChecked = "never"
-	if last != nil {
-		view.LastChecked = sinceLabel(s.o.Now().Sub(*last))
-	}
-	view.PollingLabel = "manual: press Refresh"
-	if p := s.o.Engine.Polling(); !p.Manual {
-		view.PollingLabel = "checking every " + p.String()
-	}
-	return nil
 }
 
 func sinceLabel(d time.Duration) string {
@@ -95,7 +76,19 @@ func sinceLabel(d time.Duration) string {
 func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	s.o.Engine.Refresh()
 	s.o.Log.Info("manual refresh requested")
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, localPath(r.PostFormValue("next")), http.StatusSeeOther) //nolint:gosec // localPath allows only paths on this server
+
+}
+
+// localPath returns next when it is a path on this server, otherwise "/", so a
+// redirect can never leave the app.
+func localPath(next string) string {
+	u, err := url.Parse(next)
+	if err != nil || u.Scheme != "" || u.Host != "" || !strings.HasPrefix(next, "/") ||
+		strings.HasPrefix(next, "//") || strings.Contains(next, `\`) {
+		return "/"
+	}
+	return next
 }
 
 func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {
@@ -129,12 +122,13 @@ func (s *Server) repoForRequest(r *http.Request) (repoView, bool, error) {
 	if err != nil || len(repos) == 0 {
 		return repoView{}, false, err
 	}
-	f := store.QueueFilter{Owner: owner, Name: name}
-	q, err := s.buildQueue(r.Context(), f, true)
+	f := store.QueueFilter{Owner: owner, Name: name, Bucket: r.URL.Query().Get("bucket")}
+	base := repoURL(owner, name)
+	q, err := s.buildQueue(r.Context(), queueQuery{filter: f, base: base, perRepo: true})
 	if err != nil {
 		return repoView{}, false, err
 	}
-	q.FragmentURL = "/fragments/r/" + url.PathEscape(owner) + "/" + url.PathEscape(name)
+	q.FragmentURL = queueLink("/fragments"+base, "", "", f.Bucket)
 	v := repoView{Name: repos[0].FullName(), GitHubURL: "https://github.com/" + repos[0].FullName() + "/pulls", Queue: q}
 	for _, repo := range repos {
 		v.Accounts = append(v.Accounts, repo.Account)
@@ -178,6 +172,9 @@ type transitionView struct{ At, From, To, Reason string }
 
 type explainView struct {
 	Link        linkView
+	RepoURL     string
+	Tone        string
+	BucketTitle string
 	Title       string
 	Account     string
 	State       string
@@ -210,9 +207,14 @@ func (s *Server) handleExplain(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		v := explainView{
-			Link:  linkView{Repo: d.Repo.FullName(), Number: number, URL: githubURL(d.URL)},
+			Link:    linkView{Repo: d.Repo.FullName(), Number: number, URL: githubURL(d.URL)},
+			RepoURL: repoURL(d.Repo.Owner, d.Repo.Name), Tone: "muted",
 			Title: titleOr(d.Title, number), Account: d.Repo.Account, State: d.State, Revision: d.Revision, Result: d.Result,
 			Evidence: s.evidence(d),
+		}
+		if d.Result != nil {
+			b := classify.Bucket(d.Result.Bucket)
+			v.Tone, v.BucketTitle = tone(b), b.Title()
 		}
 		for _, tr := range trs {
 			from := "(new)"

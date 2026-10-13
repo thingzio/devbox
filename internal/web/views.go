@@ -38,35 +38,147 @@ type rowView struct {
 }
 
 type bucketView struct {
-	ID, Title, Handoff string
-	Rows               []rowView
+	ID, Title, Tone, Handoff string
+	Link, LinkLabel          string
+	Rows                     []rowView
 }
 
-type bucketOption struct{ ID, Title string }
+// tileView is one stat tile; tiles double as the bucket filter.
+type tileView struct {
+	Title, Tone, URL string
+	Count            int
+	Active           bool
+}
 
-type countsView struct{ WaitingOnAuthor, Own, Draft int }
+// countLinkView is a sidebar entry: a link with a count beside it.
+type countLinkView struct {
+	Title, URL string
+	Count      int
+	Active     bool
+}
 
 type queueView struct {
-	Buckets       []bucketView
-	Ready         []rowView
-	Unclassified  []rowView
-	Counts        countsView
-	Totals        string
-	EmptyMessage  string
-	FragmentURL   string
-	LastChecked   string
-	PollingLabel  string
-	Filter        store.QueueFilter
-	RepoFilter    string
-	Accounts      []string
-	BucketOptions []bucketOption
+	Tiles        []tileView
+	Buckets      []bucketView
+	Ready        []rowView
+	ReadyURL     string
+	Others       []countLinkView
+	Repos        []countLinkView
+	Unclassified []rowView
+	EmptyMessage string
+	FragmentURL  string
+	Filter       store.QueueFilter
+	RepoFilter   string
+	Accounts     []string
+	RepoOptions  []string
 }
 
-func (s *Server) buildQueue(ctx context.Context, f store.QueueFilter, perRepo bool) (queueView, error) {
-	rows, err := s.o.Store.Queue(ctx, f)
+// bucketTones maps buckets onto the severity scale; unlisted buckets are muted.
+var bucketTones = map[classify.Bucket]string{
+	classify.WaitingOnMe:         "critical",
+	classify.WaitingTestApproval: "high",
+	classify.NeedsRereview:       "high",
+	classify.ApprovedBlocked:     "medium",
+	classify.NeedsInitialReview:  "low",
+	classify.ReadyToMerge:        "ok",
+}
+
+func tone(b classify.Bucket) string {
+	if t, ok := bucketTones[b]; ok {
+		return t
+	}
+	return "muted"
+}
+
+// queueQuery is what a queue page shows and where its links point.
+type queueQuery struct {
+	filter  store.QueueFilter // Bucket is applied after counting, so every tile keeps its count
+	repo    string            // raw repository filter, echoed into links
+	base    string            // page path that tiles and sidebar links point to
+	perRepo bool              // repository pages offer hand-off commands
+}
+
+func (q queueQuery) link(bucket string) string {
+	return queueLink(q.base, q.filter.Account, q.repo, bucket)
+}
+
+// toggle links to bucket, or back to every bucket when bucket is already selected.
+func (q queueQuery) toggle(bucket string) string {
+	if q.filter.Bucket == bucket {
+		return q.link("")
+	}
+	return q.link(bucket)
+}
+
+func (q queueQuery) filtered() bool {
+	return q.filter.Account != "" || q.repo != "" || q.filter.Bucket != ""
+}
+
+func (s *Server) buildQueue(ctx context.Context, q queueQuery) (queueView, error) {
+	all, err := s.o.Store.Queue(ctx, store.QueueFilter{})
 	if err != nil {
 		return queueView{}, err
 	}
+	scoped := all
+	if f := q.filter; f.Account != "" || f.Owner != "" || f.Name != "" {
+		if scoped, err = s.o.Store.Queue(ctx, store.QueueFilter{Owner: f.Owner, Name: f.Name, Account: f.Account}); err != nil {
+			return queueView{}, err
+		}
+	}
+	byBucket := s.groupRows(scoped)
+	selected := q.filter.Bucket
+	view := queueView{Filter: q.filter}
+	view.Tiles = append(view.Tiles, tileView{Title: "All actions", Tone: "accent", URL: q.link(""), Active: selected == ""})
+	for _, b := range classify.ActionBuckets() {
+		n := len(byBucket[b])
+		view.Tiles[0].Count += n
+		view.Tiles = append(view.Tiles, tileView{Title: b.Title(), Tone: tone(b), URL: q.toggle(string(b)), Count: n, Active: selected == string(b)})
+	}
+	shown := classify.ActionBuckets()
+	if selected != "" {
+		shown = []classify.Bucket{classify.Bucket(selected)}
+	}
+	for _, b := range shown {
+		rs := byBucket[b]
+		if len(rs) == 0 {
+			continue
+		}
+		bv := bucketView{ID: string(b), Title: b.Title(), Tone: tone(b), Rows: rs, Link: q.toggle(string(b)), LinkLabel: "Only these"}
+		if selected != "" {
+			bv.LinkLabel = "All buckets"
+		}
+		if q.perRepo {
+			var urls []string
+			for _, r := range rs {
+				if r.URL != "" {
+					urls = append(urls, r.URL)
+				}
+			}
+			bv.Handoff = classify.Handoff(b, urls)
+		}
+		view.Buckets = append(view.Buckets, bv)
+	}
+	view.Ready = byBucket[classify.ReadyToMerge]
+	view.ReadyURL = q.toggle(string(classify.ReadyToMerge))
+	for _, b := range []classify.Bucket{classify.WaitingOnAuthor, classify.Own, classify.Draft} {
+		view.Others = append(view.Others, countLinkView{Title: b.Title(), URL: q.toggle(string(b)), Count: len(byBucket[b]), Active: selected == string(b)})
+	}
+	view.Unclassified = byBucket[classify.Unclassified]
+	if view.Repos, err = s.repoLinks(ctx, all, q.filter); err != nil {
+		return queueView{}, err
+	}
+	if len(view.Buckets) == 0 {
+		if q.filtered() {
+			view.EmptyMessage = "Nothing matches these filters."
+		} else if view.EmptyMessage, err = s.emptyMessage(ctx); err != nil {
+			return queueView{}, err
+		}
+	}
+	return view, nil
+}
+
+// groupRows converts queue rows to row views grouped by bucket, each group ranked.
+func (s *Server) groupRows(rows []store.QueueRow) map[classify.Bucket][]rowView {
 	now := s.o.Now()
 	byBucket := map[classify.Bucket][]rowView{}
 	for _, q := range rows {
@@ -93,49 +205,34 @@ func (s *Server) buildQueue(ctx context.Context, f store.QueueFilter, perRepo bo
 	for b := range byBucket {
 		slices.SortFunc(byBucket[b], func(x, y rowView) int { return classify.Compare(x.rank, y.rank) })
 	}
-	view := queueView{Filter: f}
-	var totals []string
-	actions := 0
-	for _, b := range classify.ActionBuckets() {
-		view.BucketOptions = append(view.BucketOptions, bucketOption{ID: string(b), Title: b.Title()})
-		rs := byBucket[b]
-		if len(rs) == 0 {
+	return byBucket
+}
+
+// repoLinks lists each enabled repository once, with its action count across
+// every account, so the sidebar navigates regardless of the current filter.
+func (s *Server) repoLinks(ctx context.Context, all []store.QueueRow, current store.QueueFilter) ([]countLinkView, error) {
+	repos, err := s.o.Store.Repos(ctx)
+	if err != nil {
+		return nil, err
+	}
+	actions := map[string]int{}
+	for _, r := range all {
+		if classify.Bucket(r.Result.Bucket).IsAction() {
+			actions[strings.ToLower(r.Owner+"/"+r.Name)]++
+		}
+	}
+	var out []countLinkView
+	seen := map[string]bool{}
+	for _, r := range repos {
+		key := strings.ToLower(r.FullName())
+		if !r.Enabled || seen[key] {
 			continue
 		}
-		bv := bucketView{ID: string(b), Title: b.Title(), Rows: rs}
-		if perRepo {
-			var urls []string
-			for _, r := range rs {
-				if r.URL != "" {
-					urls = append(urls, r.URL)
-				}
-			}
-			bv.Handoff = classify.Handoff(b, urls)
-		}
-		view.Buckets = append(view.Buckets, bv)
-		totals = append(totals, fmt.Sprintf("%d %s", len(rs), b.Title()))
-		actions += len(rs)
+		seen[key] = true
+		out = append(out, countLinkView{Title: r.FullName(), URL: repoURL(r.Owner, r.Name), Count: actions[key],
+			Active: strings.EqualFold(r.Owner, current.Owner) && strings.EqualFold(r.Name, current.Name)})
 	}
-	for _, b := range []classify.Bucket{classify.ReadyToMerge, classify.WaitingOnAuthor, classify.Own, classify.Draft, classify.Unclassified} {
-		view.BucketOptions = append(view.BucketOptions, bucketOption{ID: string(b), Title: b.Title()})
-	}
-	if actions > 0 {
-		view.Totals = fmt.Sprintf("%d actions: %s", actions, strings.Join(totals, ", "))
-	}
-	view.Ready = byBucket[classify.ReadyToMerge]
-	view.Unclassified = byBucket[classify.Unclassified]
-	view.Counts = countsView{
-		WaitingOnAuthor: len(byBucket[classify.WaitingOnAuthor]),
-		Own:             len(byBucket[classify.Own]),
-		Draft:           len(byBucket[classify.Draft]),
-	}
-	if actions == 0 {
-		view.EmptyMessage, err = s.emptyMessage(ctx)
-		if err != nil {
-			return queueView{}, err
-		}
-	}
-	return view, nil
+	return out, nil
 }
 
 func (s *Server) emptyMessage(ctx context.Context) (string, error) {
@@ -163,8 +260,12 @@ func titleOr(title string, number int) string {
 	return title
 }
 
+func repoURL(owner, name string) string {
+	return "/r/" + url.PathEscape(owner) + "/" + url.PathEscape(name)
+}
+
 func explainURL(owner, name string, number int) string {
-	return "/r/" + url.PathEscape(owner) + "/" + url.PathEscape(name) + "/" + strconv.Itoa(number)
+	return repoURL(owner, name) + "/" + strconv.Itoa(number)
 }
 
 func notes(items []string) []noteView {
@@ -204,17 +305,27 @@ type repoStatusView struct {
 	Messages []string
 }
 
+// syncView is the header heartbeat: when repositories were last checked and how.
+// State is ok, warn, paused, manual, or idle (never checked).
+type syncView struct{ State, Checked, Mode string }
+
 type statusView struct {
 	Accounts []accountStatus
 	Paused   []pausedView
 	Repos    []repoStatusView
+	Sync     syncView
 }
 
-// buildStatus feeds the header bar: auth problems, rate pauses, staleness,
-// and enrichment backlog (§9). Disabled repositories are omitted.
+// buildStatus feeds the header: auth problems, rate pauses, staleness,
+// enrichment backlog (§9), and the sync heartbeat. Disabled repositories are omitted.
 func (s *Server) buildStatus(ctx context.Context) statusView {
 	var v statusView
 	now := s.o.Now()
+	manual := s.o.Engine != nil && s.o.Engine.Polling().Manual
+	v.Sync = syncView{State: "idle", Checked: "never", Mode: "manual: press Refresh"}
+	if s.o.Engine != nil && !manual {
+		v.Sync.Mode = "checking every " + s.o.Engine.Polling().String()
+	}
 	if accounts, err := s.o.Store.Accounts(ctx); err == nil {
 		for _, a := range accounts {
 			if a.Status != store.StatusOK {
@@ -233,10 +344,14 @@ func (s *Server) buildStatus(ctx context.Context) statusView {
 		s.o.Log.Error("repo statuses", "err", err)
 		return v
 	}
-	manual := s.o.Engine != nil && s.o.Engine.Polling().Manual
+	var lastPoll *time.Time
+	warn := false
 	for _, st := range statuses {
 		if !st.Repo.Enabled {
 			continue
+		}
+		if p := st.Sync.LastPollAt; p != nil && (lastPoll == nil || p.After(*lastPoll)) {
+			lastPoll = p
 		}
 		var msgs []string
 		level := "info"
@@ -271,7 +386,26 @@ func (s *Server) buildStatus(ctx context.Context) statusView {
 		}
 		if len(msgs) > 0 {
 			v.Repos = append(v.Repos, repoStatusView{Name: st.Repo.FullName() + " @" + st.Repo.Account, Level: level, Messages: msgs})
+			warn = warn || level == "warn"
 		}
 	}
+	if lastPoll != nil {
+		v.Sync.Checked = sinceLabel(now.Sub(*lastPoll))
+	}
+	v.Sync.State = syncState(len(v.Paused) > 0, manual, lastPoll != nil, warn)
 	return v
+}
+
+func syncState(paused, manual, polled, warn bool) string {
+	switch {
+	case paused:
+		return "paused"
+	case manual:
+		return "manual"
+	case !polled:
+		return "idle"
+	case warn:
+		return "warn"
+	}
+	return "ok"
 }

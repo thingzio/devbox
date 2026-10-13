@@ -1,50 +1,60 @@
 {{define "content"}}
-<h1>Settings</h1>
-{{if .Error}}<p class="banner warn" role="alert">{{.Error}}</p>{{end}}
+<div class="page-head"><div><h1 class="page-title">Settings</h1><p class="sub">Connect GitHub accounts, choose repositories, and set how often DevBox checks them.</p></div></div>
+{{if .Error}}<p class="msg err" role="alert">{{.Error}}</p>{{end}}
+<div class="settings-grid">
+<nav class="section-nav" aria-label="Settings sections"><a href="#accounts">Accounts</a><a href="#repos">Repositories</a>{{if .Imports}}<a href="#import">Import</a>{{end}}<a href="#polling">Polling</a></nav>
+<div class="settings-main">
 
-<section id="accounts"><h2>Accounts</h2>
-{{if .Accounts}}<table><thead><tr><th>Account</th><th>Kind</th><th>Scopes</th><th>Status</th><th>Rate remaining</th><th></th></tr></thead><tbody>
-{{range .Accounts}}<tr><td>@{{.Login}}</td><td>{{.Kind}}</td><td>{{.Scopes}}</td>
-<td>{{.Status}}{{if .Detail}}: {{.Detail}}{{end}}{{if .PausedUntil}} (rate-limit pause until {{.PausedUntil}}){{end}}</td>
-<td>{{if .Rates}}{{.Rates}}{{else}}not polled yet{{end}}</td>
-<td><form method="post" action="/accounts/{{.Login}}/delete" class="inline"><button type="submit">Remove</button></form>
-<a href="https://github.com/settings/applications">Revoke on GitHub</a></td></tr>{{end}}
-</tbody></table>{{else}}<p>No accounts yet.</p>{{end}}
+<section id="accounts" class="card"><div class="card-head"><h2>Accounts</h2><span class="muted small">{{len .Accounts}} connected</span></div>
+{{if .Accounts}}<div class="table-scroll"><table><thead><tr><th>Account</th><th>Kind</th><th>Scopes</th><th>Status</th><th>Rate remaining</th><th></th></tr></thead><tbody>
+{{range .Accounts}}<tr><td><strong>@{{.Login}}</strong></td><td><span class="tag">{{.Kind}}</span></td><td class="mono small">{{.Scopes}}</td>
+<td>{{if .OK}}<span class="pill ok">{{.Status}}</span>{{else}}<span class="pill danger">{{.Status}}</span>{{end}}{{if .Detail}} <span class="muted small">{{.Detail}}</span>{{end}}{{if .PausedUntil}} <span class="pill warn">rate-limit pause until {{.PausedUntil}}</span>{{end}}</td>
+<td class="mono small">{{if .Rates}}{{.Rates}}{{else}}<span class="muted">not polled yet</span>{{end}}</td>
+<td><div class="row-actions"><form method="post" action="/accounts/{{.Login}}/delete"><button class="btn danger" type="submit">Remove</button></form>
+<a class="small" href="https://github.com/settings/applications">Revoke on GitHub</a></div></td></tr>{{end}}
+</tbody></table></div>{{else}}<p class="muted">No accounts yet.</p>{{end}}
 <h3>Add an account</h3>
-{{if .ClientIDConfigured}}<div id="device"><button type="button" hx-post="/accounts/device" hx-target="#device" hx-swap="innerHTML">Sign in with GitHub</button></div>
-{{else}}<p>Device sign-in needs an OAuth client ID (set <code>DEVBOX_GITHUB_CLIENT_ID</code>); add a classic token instead.</p>{{end}}
-<form method="post" action="/accounts/pat" class="inline"><label>Classic token <input type="password" name="token" autocomplete="off" required></label><button type="submit">Add token</button></form>
+{{if .ClientIDConfigured}}<div id="device"><button class="btn" type="button" hx-post="/accounts/device" hx-target="#device" hx-swap="innerHTML">Sign in with GitHub</button></div>
+<div class="or-divider">or</div>
+{{else}}<p class="muted small">Device sign-in needs an OAuth client ID (set <code>DEVBOX_GITHUB_CLIENT_ID</code>); add a classic token instead.</p>{{end}}
+<form method="post" action="/accounts/pat" class="row"><label class="field grow"><span class="field-cap">Classic token</span><input type="password" name="token" autocomplete="off" required></label><button class="btn" type="submit">Add token</button></form>
 </section>
 
-<section id="repos"><h2>Repositories</h2>
-{{if .AccountLogins}}<form method="post" action="/repos" class="inline">
-<label>Repository <input name="repo" placeholder="owner/name or GitHub URL" required></label>
-<label>Account <select name="account">{{range .AccountLogins}}<option value="{{.}}">@{{.}}</option>{{end}}</select></label>
-<button type="submit">Add</button></form>{{end}}
-{{range .Repos}}<details class="repo"><summary><strong>{{.Name}}</strong> @{{.Account}} · {{if .Enabled}}enabled{{else}}disabled{{end}}{{if .LastError}} · last error: {{.LastError}}{{end}}</summary>
-<form method="post" action="/repos/{{.ID}}/{{if .Enabled}}disable{{else}}enable{{end}}" class="inline"><button type="submit">{{if .Enabled}}Disable{{else}}Enable{{end}}</button></form>
-<form method="post" action="/repos/{{.ID}}/delete" class="inline"><button type="submit">Remove</button></form>
-<form method="post" action="/repos/{{.ID}}/rules"><label>Rules (JSON)<textarea name="rules" rows="10">{{.RulesJSON}}</textarea></label><button type="submit">Save rules</button></form>
+<section id="repos" class="card"><div class="card-head"><h2>Repositories</h2><span class="muted small">{{len .Repos}} monitored</span></div>
+{{if .AccountLogins}}<form method="post" action="/repos" class="row">
+<label class="field grow"><span class="field-cap">Repository</span><input name="repo" placeholder="owner/name or GitHub URL" required></label>
+<label class="field"><span class="field-cap">Account</span><select name="account">{{range .AccountLogins}}<option value="{{.}}">@{{.}}</option>{{end}}</select></label>
+<button class="btn" type="submit">Add</button></form>{{else}}<p class="muted">Add an account first, then choose repositories for it to monitor.</p>{{end}}
+<ul class="repo-list">{{range .Repos}}<li><details class="repo"><summary><strong class="mono">{{.Name}}</strong><span class="tag">@{{.Account}}</span>{{if .Enabled}}<span class="pill ok">enabled</span>{{else}}<span class="pill">disabled</span>{{end}}{{if .LastError}}<span class="flag">last error: {{.LastError}}</span>{{end}}</summary>
+<div class="repo-body">
+<div class="row-actions"><a href="{{.URL}}">Open queue →</a>
+<form method="post" action="/repos/{{.ID}}/{{if .Enabled}}disable{{else}}enable{{end}}"><button class="btn secondary sm" type="submit">{{if .Enabled}}Disable{{else}}Enable{{end}}</button></form>
+<form method="post" action="/repos/{{.ID}}/delete"><button class="btn danger" type="submit">Remove</button></form></div>
+<form method="post" action="/repos/{{.ID}}/rules" class="rules-form"><label class="field"><span class="field-cap">Rules (JSON)</span><textarea name="rules" rows="10">{{.RulesJSON}}</textarea></label><div><button class="btn" type="submit">Save rules</button></div></form>
 {{template "rules-help"}}
-</details>{{else}}<p>No repositories yet.</p>{{end}}
+</div>
+</details></li>{{else}}<li class="muted">No repositories yet.</li>{{end}}</ul>
 </section>
 
-{{if .Imports}}<section id="import"><h2>Import from maintainer-sweep</h2>
-{{if .AccountLogins}}{{range .Imports}}<form method="post" action="/import" class="inline"><input type="hidden" name="file" value="{{.}}"><span>{{.}}</span>
-<select name="account">{{range $.AccountLogins}}<option value="{{.}}">@{{.}}</option>{{end}}</select><button type="submit">Import</button></form>{{end}}
+{{if .Imports}}<section id="import" class="card"><div class="card-head"><h2>Import from maintainer-sweep</h2></div>
+{{if .AccountLogins}}<ul class="import-list">{{range .Imports}}<li><form method="post" action="/import" class="row"><input type="hidden" name="file" value="{{.}}"><span class="mono grow">{{.}}</span>
+<select name="account" aria-label="Account">{{range $.AccountLogins}}<option value="{{.}}">@{{.}}</option>{{end}}</select><button class="btn secondary sm" type="submit">Import</button></form></li>{{end}}</ul>
 {{else}}<p>Found {{range $i, $f := .Imports}}{{if $i}}, {{end}}<code>{{$f}}</code>{{end}}. Add an account above to import {{if eq (len .Imports) 1}}it{{else}}them{{end}}.</p>{{end}}
 </section>{{end}}
 
-<section id="polling"><h2>Polling</h2>
-<form method="post" action="/settings/polling" class="inline"><label>Check repositories <select name="polling">{{range .PollingOptions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label><button type="submit">Save</button></form>
-<p class="meta">{{if .PollingManual}}Manual: repositories are checked only when you press Refresh on the Queue page (newly added repositories are checked once).{{else}}Checking every {{.PollingNow}}.{{end}} Default comes from <code>--poll-interval</code>; a choice saved here overrides it.</p>
+<section id="polling" class="card"><div class="card-head"><h2>Polling</h2></div>
+<form method="post" action="/settings/polling" class="row"><label class="field"><span class="field-cap">Check repositories</span><select name="polling">{{range .PollingOptions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label><button class="btn" type="submit">Save</button></form>
+<p class="muted small">{{if .PollingManual}}Manual: repositories are checked only when you press Refresh (newly added repositories are checked once).{{else}}Checking every {{.PollingNow}}.{{end}} Default comes from <code>--poll-interval</code>; a choice saved here overrides it.</p>
 </section>
+
+</div>
+</div>
 {{end}}
 
 {{define "device"}}<div id="device-flow"{{if .Pending}} hx-get="/accounts/device/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>
-{{if .Pending}}<p>Enter code <strong class="code">{{.UserCode}}</strong> at {{if .VerificationURL}}<a href="{{.VerificationURL}}" target="_blank" rel="noopener noreferrer">{{.VerificationURL}}</a>{{else}}{{.VerificationURI}}{{end}}. Waiting for authorization…</p>
+{{if .Pending}}<p>Enter code <strong class="user-code">{{.UserCode}}</strong> at {{if .VerificationURL}}<a href="{{.VerificationURL}}" target="_blank" rel="noopener noreferrer">{{.VerificationURL}}</a>{{else}}{{.VerificationURI}}{{end}}. Waiting for authorization…</p>
 {{else if .Done}}<p>Added @{{.Login}}. <a href="/settings">Refresh</a></p>
-{{else}}<p class="banner warn">{{.Error}}</p>{{end}}
+{{else}}<p class="msg err">{{.Error}}</p>{{end}}
 </div>{{end}}
 
 
