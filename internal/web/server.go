@@ -18,6 +18,7 @@ import (
 	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/store"
+	"github.com/thingzio/devbox/internal/syncer"
 )
 
 //go:embed templates/*.html
@@ -32,22 +33,25 @@ type Engine interface {
 	RulesChanged(ctx context.Context, repoID int64, collectionChanged bool) error
 	RateStatus() map[string]time.Time
 	RateLimits() map[string][]github.Rate
+	Polling() syncer.Polling
+	SetPolling(syncer.Polling)
+	Refresh()
 }
 
 // Options configures the server.
 type Options struct {
-	Store        *store.DB
-	Hub          *hub.Hub
-	Auth         *auth.Manager
-	Engine       Engine
-	Metrics      http.Handler
-	Log          *slog.Logger
-	Addr         string // actual listen address, for Host and Origin checks
-	AllowRemote  bool
-	PollInterval time.Duration
-	ImportDir    string
-	Now          func() time.Time
-	Location     *time.Location // display time zone, default time.Local
+	Store          *store.DB
+	Hub            *hub.Hub
+	Auth           *auth.Manager
+	Engine         Engine
+	Metrics        http.Handler
+	Log            *slog.Logger
+	Addr           string // actual listen address, for Host and Origin checks
+	AllowRemote    bool
+	DefaultPolling syncer.Polling // from --poll-interval; a saved UI choice overrides it
+	ImportDir      string
+	Now            func() time.Time
+	Location       *time.Location // display time zone, default time.Local
 }
 
 // Server renders pages and handles UI actions.
@@ -104,6 +108,7 @@ func (s *Server) viewRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /fragments/r/{owner}/{name}", s.handleRepoFragment)
 	mux.HandleFunc("GET /r/{owner}/{name}/{number}", s.handleExplain)
 	mux.HandleFunc("GET /events", s.handleEvents)
+	mux.HandleFunc("POST /refresh", s.handleRefresh)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	if s.o.Metrics != nil {
 		mux.Handle("GET /metrics", s.o.Metrics)

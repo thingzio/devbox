@@ -11,11 +11,11 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/thingzio/devbox/internal/app"
 	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/logging"
+	"github.com/thingzio/devbox/internal/syncer"
 	"github.com/thingzio/devbox/internal/version"
 )
 
@@ -61,7 +61,7 @@ func serve(args []string, stderr io.Writer) int {
 	fs.SetOutput(stderr)
 	addr := fs.String("addr", "127.0.0.1:8484", "listen address")
 	dbPath := fs.String("db", defaultDBPath(), "SQLite database path")
-	poll := fs.Duration("poll-interval", 2*time.Minute, "fingerprint poll interval (minimum 1m)")
+	poll := fs.String("poll-interval", syncer.DefaultPolling().String(), "default repository check interval, 1m to 15m, or manual; Settings can override it")
 	debug := fs.Bool("debug", false, "log at debug level, including every GitHub request")
 	logFormat := fs.String("log-format", "auto", "log format: auto, text, or json")
 	allowRemote := fs.Bool("allow-remote", false, "allow a non-loopback --addr")
@@ -90,8 +90,13 @@ func serve(args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "devbox serve:", err)
 		return 2
 	}
+	polling, err := syncer.ParsePolling(*poll)
+	if err != nil {
+		fmt.Fprintln(stderr, "devbox serve:", err)
+		return 2
+	}
 	cfg := app.Config{
-		Addr: *addr, DBPath: *dbPath, PollInterval: *poll, AllowRemote: *allowRemote,
+		Addr: *addr, DBPath: *dbPath, Polling: polling, AllowRemote: *allowRemote,
 		GitHubAPIURL: *apiURL, GitHubURL: *webURL, ImportDir: defaultImportDir(), Logger: log,
 	}
 	if err := cfg.Validate(); err != nil {

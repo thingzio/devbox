@@ -35,7 +35,10 @@
 {{else}}<p>Found {{range $i, $f := .Imports}}{{if $i}}, {{end}}<code>{{$f}}</code>{{end}}. Add an account above to import {{if eq (len .Imports) 1}}it{{else}}them{{end}}.</p>{{end}}
 </section>{{end}}
 
-<section><h2>Polling</h2><p>Every {{.PollInterval}} (set with <code>--poll-interval</code>).</p></section>
+<section id="polling"><h2>Polling</h2>
+<form method="post" action="/settings/polling" class="inline"><label>Check repositories <select name="polling">{{range .PollingOptions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label><button type="submit">Save</button></form>
+<p class="meta">{{if .PollingManual}}Manual: repositories are checked only when you press Refresh on the Queue page (newly added repositories are checked once).{{else}}Checking every {{.PollingNow}}.{{end}} Default comes from <code>--poll-interval</code>; a choice saved here overrides it.</p>
+</section>
 {{end}}
 
 {{define "device"}}<div id="device-flow"{{if .Pending}} hx-get="/accounts/device/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{end}}>

@@ -51,6 +51,8 @@ func TestServeUsageErrors(t *testing.T) {
 	cases := map[string][]string{
 		"unknown flag":            {"serve", "--nope"},
 		"poll interval too short": {"serve", "--poll-interval", "10s"},
+		"poll interval too long":  {"serve", "--poll-interval", "20m"},
+		"poll interval not valid": {"serve", "--poll-interval", "often"},
 		"bad log format":          {"serve", "--log-format", "xml"},
 		"non-loopback address":    {"serve", "--addr", "0.0.0.0:8484"},
 		"unexpected argument":     {"serve", "extra"},

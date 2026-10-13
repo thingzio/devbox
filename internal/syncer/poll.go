@@ -90,10 +90,11 @@ func (e *Engine) recordPoll(ctx context.Context, log *slog.Logger, repo store.Re
 
 // pollDelay is the jittered interval, or min(interval × 2^failures, 15m) after failures (§7).
 func (e *Engine) pollDelay(failures int) time.Duration {
+	interval := e.Polling().Interval
 	if failures <= 0 {
-		return time.Duration(float64(e.cfg.PollInterval) * (0.9 + 0.2*e.d.Rand()))
+		return time.Duration(float64(interval) * (0.9 + 0.2*e.d.Rand()))
 	}
-	d := e.cfg.PollInterval
+	d := interval
 	for i := 0; i < failures && d < maxPollBackoff; i++ {
 		d *= 2
 	}

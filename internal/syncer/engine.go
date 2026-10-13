@@ -33,7 +33,8 @@ type Source interface {
 
 // Config tunes the engine; zero values take defaults.
 type Config struct {
-	PollInterval    time.Duration // default 2m
+	PollInterval    time.Duration // default 2m; changeable at runtime with SetPolling
+	Manual          bool          // start in manual polling: check repositories only on Refresh
 	Workers         int           // concurrent enrichments per account, default 4
 	DispatchEvery   time.Duration // default 1s
 	ReclassifyEvery time.Duration // default 5m
@@ -78,6 +79,9 @@ type Engine struct {
 	wg        gosync.WaitGroup
 	wake      chan struct{}
 	resync    chan struct{}
+	polling   Polling
+	pokes     map[int64]chan struct{} // per running poller: poll now
+	changed   chan struct{}           // closed and replaced whenever polling changes
 }
 
 // New returns an engine with defaults applied.
@@ -117,7 +121,58 @@ func New(cfg Config, d Deps) *Engine {
 		jobs: map[prKey]context.CancelFunc{}, sems: map[string]chan struct{}{}, paused: map[string]time.Time{},
 		rates: map[string]map[string]github.Rate{},
 		wake:  make(chan struct{}, 1), resync: make(chan struct{}, 1),
+		polling: Polling{Manual: cfg.Manual, Interval: cfg.PollInterval},
+		pokes:   map[int64]chan struct{}{}, changed: make(chan struct{}),
 	}
+}
+
+// Polling returns the current polling mode.
+func (e *Engine) Polling() Polling {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.polling
+}
+
+// SetPolling changes the polling mode while running. An automatic interval
+// checks every repository now and then follows the new cadence; manual stops
+// background checks until Refresh.
+func (e *Engine) SetPolling(p Polling) {
+	e.mu.Lock()
+	e.polling = p
+	close(e.changed)
+	e.changed = make(chan struct{})
+	e.mu.Unlock()
+	e.d.Log.Info("polling changed", "polling", p.String())
+	if !p.Manual {
+		e.Refresh()
+	}
+}
+
+// Refresh asks every running poller to check its repository now.
+func (e *Engine) Refresh() {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, poke := range e.pokes {
+		signal(poke)
+	}
+}
+
+func (e *Engine) watch(repoID int64) (chan struct{}, func()) {
+	poke := make(chan struct{}, 1)
+	e.mu.Lock()
+	e.pokes[repoID] = poke
+	e.mu.Unlock()
+	return poke, func() {
+		e.mu.Lock()
+		delete(e.pokes, repoID)
+		e.mu.Unlock()
+	}
+}
+
+func (e *Engine) pollingChanged() <-chan struct{} {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.changed
 }
 
 func (e *Engine) now() time.Time { return e.d.Now().UTC() }

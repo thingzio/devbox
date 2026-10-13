@@ -54,6 +54,8 @@ type queueView struct {
 	Totals        string
 	EmptyMessage  string
 	FragmentURL   string
+	LastChecked   string
+	PollingLabel  string
 	Filter        store.QueueFilter
 	RepoFilter    string
 	Accounts      []string
@@ -231,6 +233,7 @@ func (s *Server) buildStatus(ctx context.Context) statusView {
 		s.o.Log.Error("repo statuses", "err", err)
 		return v
 	}
+	manual := s.o.Engine != nil && s.o.Engine.Polling().Manual
 	for _, st := range statuses {
 		if !st.Repo.Enabled {
 			continue
@@ -239,6 +242,8 @@ func (s *Server) buildStatus(ctx context.Context) statusView {
 		level := "info"
 		last := st.Sync.LastSuccessAt
 		switch {
+		case manual:
+			// Staleness is expected between refreshes; the queue shows when repositories were last checked.
 		case last == nil && now.Sub(st.Repo.AddedAt) > staleAfter:
 			msgs, level = append(msgs, "no successful poll yet"), "warn"
 		case last != nil && now.Sub(*last) > staleAfter:

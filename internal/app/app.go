@@ -26,14 +26,11 @@ import (
 	"github.com/thingzio/devbox/internal/web"
 )
 
-// MinPollInterval is the shortest allowed fingerprint poll interval (§7).
-const MinPollInterval = time.Minute
-
 // Config is everything `devbox serve` needs.
 type Config struct {
 	Addr         string
 	DBPath       string
-	PollInterval time.Duration
+	Polling      syncer.Polling // default from --poll-interval; a choice saved in Settings overrides it
 	AllowRemote  bool
 	GitHubAPIURL string
 	GitHubURL    string
@@ -41,13 +38,13 @@ type Config struct {
 	Logger       *slog.Logger
 	Secrets      auth.Secrets      // nil uses the OS keychain
 	Ready        func(addr string) // called with the bound address once serving
-	EngineConfig syncer.Config     // zero values take engine defaults; PollInterval is overridden
+	EngineConfig syncer.Config     // zero values take engine defaults; polling is overridden
 }
 
 // Validate rejects configurations that are unsafe or unusable.
 func (c Config) Validate() error {
-	if c.PollInterval < MinPollInterval {
-		return fmt.Errorf("poll interval %s is below the %s minimum", c.PollInterval, MinPollInterval)
+	if err := c.Polling.Validate(); err != nil {
+		return err
 	}
 	host, _, err := net.SplitHostPort(c.Addr)
 	if err != nil {
@@ -66,6 +63,20 @@ func (c Config) Validate() error {
 		return errors.New("database path is required")
 	}
 	return nil
+}
+
+// effectivePolling returns the saved Settings choice when valid, else the default.
+func effectivePolling(ctx context.Context, db *store.DB, def syncer.Polling, log *slog.Logger) (syncer.Polling, string) {
+	saved, ok, err := db.Setting(ctx, store.SettingPolling)
+	if err != nil || !ok {
+		return def, "default"
+	}
+	p, err := syncer.ParsePolling(saved)
+	if err != nil {
+		log.Warn("ignoring invalid saved polling setting", "value", saved, "err", err)
+		return def, "default"
+	}
+	return p, "settings"
 }
 
 func isLoopback(host string) bool {
@@ -138,7 +149,11 @@ func Run(ctx context.Context, cfg Config) error {
 		return collect.NewSource(collect.GitHubReader{Client: c}, db, log), nil
 	}
 	ecfg := cfg.EngineConfig
-	ecfg.PollInterval = cfg.PollInterval
+	polling, source := effectivePolling(ctx, db, cfg.Polling, log)
+	ecfg.PollInterval, ecfg.Manual = polling.Interval, polling.Manual
+	if polling.Manual {
+		ecfg.PollInterval = syncer.DefaultPollInterval
+	}
 	engine = syncer.New(ecfg, syncer.Deps{Store: db, Hub: h, Metrics: m, Log: log, Sources: sources})
 
 	mgrCtx, cancelMgr := context.WithCancel(context.Background())
@@ -150,7 +165,7 @@ func Run(ctx context.Context, cfg Config) error {
 	})
 	srv, err := web.New(web.Options{
 		Store: db, Hub: h, Auth: mgr, Engine: engine, Metrics: promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
-		Log: log, Addr: ln.Addr().String(), AllowRemote: cfg.AllowRemote, PollInterval: cfg.PollInterval, ImportDir: cfg.ImportDir,
+		Log: log, Addr: ln.Addr().String(), AllowRemote: cfg.AllowRemote, DefaultPolling: cfg.Polling, ImportDir: cfg.ImportDir,
 	})
 	if err != nil {
 		_ = ln.Close()
@@ -177,7 +192,7 @@ func Run(ctx context.Context, cfg Config) error {
 	accounts, _ := db.Accounts(ctx)
 	repos, _ := db.Repos(ctx)
 	log.Info("devbox started", "version", version.Version, "url", "http://"+ln.Addr().String(), "db", cfg.DBPath,
-		"poll_interval", cfg.PollInterval, "accounts", len(accounts), "repos", len(repos), "device_flow", mgr.DeviceConfigured())
+		"polling", polling.String(), "polling_source", source, "accounts", len(accounts), "repos", len(repos), "device_flow", mgr.DeviceConfigured())
 	if cfg.Ready != nil {
 		cfg.Ready(ln.Addr().String())
 	}

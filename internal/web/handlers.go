@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -44,6 +45,9 @@ func (s *Server) queueForRequest(r *http.Request) (queueView, error) {
 	}
 	view.RepoFilter = repo
 	view.FragmentURL = fragmentURL("/fragments/queue", f, repo)
+	if err := s.fillRefresh(r.Context(), &view); err != nil {
+		return queueView{}, err
+	}
 	accounts, err := s.o.Store.Accounts(r.Context())
 	if err != nil {
 		return queueView{}, err
@@ -52,6 +56,46 @@ func (s *Server) queueForRequest(r *http.Request) (queueView, error) {
 		view.Accounts = append(view.Accounts, a.Login)
 	}
 	return view, nil
+}
+
+// fillRefresh reports when repositories were last checked and how polling runs.
+func (s *Server) fillRefresh(ctx context.Context, view *queueView) error {
+	statuses, err := s.o.Store.RepoStatuses(ctx)
+	if err != nil {
+		return err
+	}
+	var last *time.Time
+	for _, st := range statuses {
+		if st.Repo.Enabled && st.Sync.LastPollAt != nil && (last == nil || st.Sync.LastPollAt.After(*last)) {
+			last = st.Sync.LastPollAt
+		}
+	}
+	view.LastChecked = "never"
+	if last != nil {
+		view.LastChecked = sinceLabel(s.o.Now().Sub(*last))
+	}
+	view.PollingLabel = "manual: press Refresh"
+	if p := s.o.Engine.Polling(); !p.Manual {
+		view.PollingLabel = "checking every " + p.String()
+	}
+	return nil
+}
+
+func sinceLabel(d time.Duration) string {
+	switch m := int(d / time.Minute); {
+	case m < 1:
+		return "just now"
+	case m < 60:
+		return fmt.Sprintf("%d min ago", m)
+	default:
+		return fmt.Sprintf("%dh ago", m/60)
+	}
+}
+
+func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	s.o.Engine.Refresh()
+	s.o.Log.Info("manual refresh requested")
+	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 func (s *Server) handleQueue(w http.ResponseWriter, r *http.Request) {

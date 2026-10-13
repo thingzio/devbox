@@ -71,3 +71,82 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+func startRun(t *testing.T, en *env) func() {
+	t.Helper()
+	en.eng.d.Now = time.Now
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- en.eng.Run(ctx) }()
+	return func() {
+		cancel()
+		if err := <-done; err != nil {
+			t.Errorf("Run: %v", err)
+		}
+	}
+}
+
+func (en *env) fingerprintCalls() int {
+	en.src.mu.Lock()
+	defer en.src.mu.Unlock()
+	return en.src.fpCalls
+}
+
+func TestManualPollingWaitsForRefresh(t *testing.T) {
+	en := newEnv(t, Config{Manual: true, DispatchEvery: 10 * time.Millisecond, ReclassifyEvery: time.Hour, ResyncEvery: time.Hour})
+	stop := startRun(t, en)
+	defer stop()
+	time.Sleep(150 * time.Millisecond)
+	if n := en.fingerprintCalls(); n != 0 {
+		t.Fatalf("manual mode polled %d times without a refresh", n)
+	}
+	en.eng.Refresh()
+	waitFor(t, func() bool { return en.fingerprintCalls() == 1 })
+	time.Sleep(100 * time.Millisecond)
+	if n := en.fingerprintCalls(); n != 1 {
+		t.Fatalf("one refresh polled %d times", n)
+	}
+}
+
+func TestManualPollingStillPollsNewRepoOnce(t *testing.T) {
+	en := newEnv(t, Config{Manual: true, DispatchEvery: 10 * time.Millisecond, ReclassifyEvery: time.Hour, ResyncEvery: time.Hour})
+	stop := startRun(t, en)
+	defer stop()
+	waitFor(t, func() bool { en.eng.mu.Lock(); defer en.eng.mu.Unlock(); return len(en.eng.pokes) == 1 })
+	acct, _ := en.db.Account(context.Background(), "me")
+	if _, err := en.db.AddRepo(context.Background(), acct.ID, "o", "r2", rules.Default(), t0); err != nil {
+		t.Fatal(err)
+	}
+	en.eng.ReposChanged()
+	waitFor(t, func() bool { return en.fingerprintCalls() == 1 })
+}
+
+func TestSetPollingAppliesImmediately(t *testing.T) {
+	en := newEnv(t, Config{PollInterval: time.Hour, DispatchEvery: 10 * time.Millisecond, ReclassifyEvery: time.Hour, ResyncEvery: time.Hour})
+	stop := startRun(t, en)
+	defer stop()
+	waitFor(t, func() bool { return en.fingerprintCalls() == 1 })
+	en.eng.SetPolling(Polling{Interval: time.Minute})
+	waitFor(t, func() bool { return en.fingerprintCalls() == 2 })
+	if got := en.eng.Polling(); got != (Polling{Interval: time.Minute}) {
+		t.Fatalf("Polling() = %+v", got)
+	}
+	en.eng.SetPolling(Polling{Manual: true})
+	time.Sleep(150 * time.Millisecond)
+	if n := en.fingerprintCalls(); n != 2 {
+		t.Fatalf("switching to manual polled (%d calls)", n)
+	}
+	en.eng.Refresh()
+	waitFor(t, func() bool { return en.fingerprintCalls() == 3 })
+}
+
+func TestPollDelayFollowsCurrentInterval(t *testing.T) {
+	en := newEnv(t, Config{PollInterval: 2 * time.Minute})
+	en.eng.SetPolling(Polling{Interval: 5 * time.Minute})
+	if d := en.eng.pollDelay(0); d != 5*time.Minute {
+		t.Fatalf("steady delay = %v, want 5m", d)
+	}
+	if d := en.eng.pollDelay(1); d != 10*time.Minute {
+		t.Fatalf("backoff after one failure = %v, want 10m", d)
+	}
+}

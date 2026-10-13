@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -23,9 +24,10 @@ func TestOpenAppliesMigrationsOnce(t *testing.T) {
 		t.Fatalf("second Open: %v", err)
 	}
 	defer db.Close()
+	files, _ := fs.Glob(migrations, "migrations/*.sql")
 	var n int
-	if err := db.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil || n != 1 {
-		t.Fatalf("schema_migrations rows = %d, err = %v", n, err)
+	if err := db.r.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&n); err != nil || n != len(files) {
+		t.Fatalf("schema_migrations rows = %d, want %d (err %v)", n, len(files), err)
 	}
 	var fk int
 	if err := db.w.QueryRowContext(ctx, `PRAGMA foreign_keys`).Scan(&fk); err != nil || fk != 1 {

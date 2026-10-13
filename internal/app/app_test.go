@@ -15,6 +15,7 @@ import (
 
 	"github.com/thingzio/devbox/internal/auth"
 	"github.com/thingzio/devbox/internal/github"
+	"github.com/thingzio/devbox/internal/store"
 	"github.com/thingzio/devbox/internal/syncer"
 )
 
@@ -63,14 +64,15 @@ func fakeGitHub(t *testing.T) *httptest.Server {
 
 func baseConfig(t *testing.T) Config {
 	return Config{
-		Addr: "127.0.0.1:0", DBPath: filepath.Join(t.TempDir(), "devbox.db"), PollInterval: time.Minute,
+		Addr: "127.0.0.1:0", DBPath: filepath.Join(t.TempDir(), "devbox.db"), Polling: syncer.Polling{Interval: time.Minute},
 		GitHubAPIURL: github.DefaultAPIURL, GitHubURL: "https://github.com", Secrets: auth.NewMemSecrets(),
 	}
 }
 
 func TestValidate(t *testing.T) {
 	cases := map[string]func(*Config){
-		"poll interval below minimum": func(c *Config) { c.PollInterval = 30 * time.Second },
+		"poll interval below minimum": func(c *Config) { c.Polling = syncer.Polling{Interval: 30 * time.Second} },
+		"poll interval above maximum": func(c *Config) { c.Polling = syncer.Polling{Interval: 20 * time.Minute} },
 		"non-loopback without opt-in": func(c *Config) { c.Addr = "0.0.0.0:8484" },
 		"malformed address":           func(c *Config) { c.Addr = "8484" },
 		"bad API URL":                 func(c *Config) { c.GitHubAPIURL = "ftp://x" },
@@ -177,5 +179,52 @@ func TestRunEndToEnd(t *testing.T) {
 		}
 	case <-time.After(15 * time.Second):
 		t.Fatal("Run did not shut down")
+	}
+}
+
+func TestRunUsesSavedPollingOverDefault(t *testing.T) {
+	cfg := baseConfig(t)
+	db, err := store.Open(context.Background(), cfg.DBPath, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetSetting(context.Background(), store.SettingPolling, "manual", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	_ = db.Close()
+	cfg.Polling = syncer.Polling{Interval: 5 * time.Minute}
+	ready := make(chan string, 1)
+	cfg.Ready = func(addr string) { ready <- addr }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, cfg) }()
+	var addr string
+	select {
+	case addr = <-ready:
+	case err := <-done:
+		t.Fatalf("Run exited: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("not ready")
+	}
+	get := func(path string) string {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+path, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return string(b)
+	}
+	if body := get("/"); !strings.Contains(body, "manual: press Refresh") {
+		t.Errorf("saved manual choice not applied:\n%s", body)
+	}
+	if body := get("/settings"); !strings.Contains(body, `<option value="default">Default (5m)</option>`) ||
+		!strings.Contains(body, `<option value="manual" selected>`) {
+		t.Errorf("settings do not show flag default and saved override")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
 	}
 }

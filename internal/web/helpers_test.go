@@ -17,6 +17,7 @@ import (
 	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/rules"
 	"github.com/thingzio/devbox/internal/store"
+	"github.com/thingzio/devbox/internal/syncer"
 )
 
 var t0 = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
@@ -32,6 +33,26 @@ type fakeEngine struct {
 	rulesCalls   []rulesCall
 	paused       map[string]time.Time
 	rates        map[string][]github.Rate
+	polling      syncer.Polling
+	setPolling   []syncer.Polling
+	refreshes    int
+}
+
+func (f *fakeEngine) Polling() syncer.Polling {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.polling
+}
+func (f *fakeEngine) SetPolling(p syncer.Polling) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.polling = p
+	f.setPolling = append(f.setPolling, p)
+}
+func (f *fakeEngine) Refresh() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.refreshes++
 }
 
 func (f *fakeEngine) ReposChanged() { f.mu.Lock(); f.reposChanged++; f.mu.Unlock() }
@@ -84,7 +105,7 @@ type testServer struct {
 
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
-	ts := &testServer{t: t, ctx: context.Background(), hub: hub.New(), engine: &fakeEngine{}, secrets: auth.NewMemSecrets(),
+	ts := &testServer{t: t, ctx: context.Background(), hub: hub.New(), engine: &fakeEngine{polling: syncer.DefaultPolling()}, secrets: auth.NewMemSecrets(),
 		now: t0, importDir: t.TempDir(), apiScopes: "repo, read:org"}
 	db, err := store.Open(ts.ctx, filepath.Join(t.TempDir(), "d.db"), nil)
 	if err != nil {
@@ -118,7 +139,7 @@ func newTestServer(t *testing.T) *testServer {
 	ts.http = httptest.NewUnstartedServer(nil)
 	s, err := New(Options{
 		Store: db, Hub: ts.hub, Auth: mgr, Engine: ts.engine, Metrics: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "devbox_up 1\n") }),
-		Addr: ts.http.Listener.Addr().String(), PollInterval: 2 * time.Minute, ImportDir: ts.importDir,
+		Addr: ts.http.Listener.Addr().String(), DefaultPolling: syncer.DefaultPolling(), ImportDir: ts.importDir,
 		Now: ts.clock, Location: time.UTC,
 	})
 	if err != nil {

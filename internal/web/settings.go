@@ -16,6 +16,7 @@ import (
 	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/rules"
 	"github.com/thingzio/devbox/internal/store"
+	"github.com/thingzio/devbox/internal/syncer"
 )
 
 func (s *Server) settingsRoutes(mux *http.ServeMux) {
@@ -27,6 +28,67 @@ func (s *Server) settingsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /repos", s.handleAddRepo)
 	mux.HandleFunc("POST /repos/{id}/{action}", s.handleRepoAction)
 	mux.HandleFunc("POST /import", s.handleImport)
+	mux.HandleFunc("POST /settings/polling", s.handlePolling)
+}
+
+type pollingOption struct {
+	Value, Label string
+	Selected     bool
+}
+
+var pollingChoices = []string{"manual", "1m", "2m", "3m", "5m", "10m", "15m"}
+
+// fillPolling builds the polling dropdown: Default (the --poll-interval value)
+// plus presets, with the saved choice selected.
+func (s *Server) fillPolling(ctx context.Context, v *settingsView) error {
+	saved, ok, err := s.o.Store.Setting(ctx, store.SettingPolling)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		saved = "default"
+	}
+	v.PollingOptions = append(v.PollingOptions, pollingOption{Value: "default", Label: "Default (" + s.o.DefaultPolling.String() + ")", Selected: saved == "default"})
+	for _, c := range pollingChoices {
+		label := "Every " + c
+		if c == "manual" {
+			label = "Manual (Refresh button only)"
+		}
+		v.PollingOptions = append(v.PollingOptions, pollingOption{Value: c, Label: label, Selected: saved == c})
+	}
+	if ok && !slices.Contains(pollingChoices, saved) {
+		v.PollingOptions = append(v.PollingOptions, pollingOption{Value: saved, Label: "Every " + saved, Selected: true})
+	}
+	current := s.o.Engine.Polling()
+	v.PollingNow, v.PollingManual = current.String(), current.Manual
+	return nil
+}
+
+// handlePolling saves the polling choice and applies it to the running engine;
+// "default" clears the saved choice so --poll-interval (or 2m) applies again.
+func (s *Server) handlePolling(w http.ResponseWriter, r *http.Request) {
+	choice := r.PostFormValue("polling")
+	p := s.o.DefaultPolling
+	if choice == "default" {
+		if err := s.o.Store.DeleteSetting(r.Context(), store.SettingPolling); err != nil {
+			s.serverError(w, err)
+			return
+		}
+	} else {
+		parsed, err := syncer.ParsePolling(choice)
+		if err != nil {
+			s.reject(w, r, err)
+			return
+		}
+		p = parsed
+		if err := s.o.Store.SetSetting(r.Context(), store.SettingPolling, p.String(), s.o.Now()); err != nil {
+			s.serverError(w, err)
+			return
+		}
+	}
+	s.o.Engine.SetPolling(p)
+	s.o.Log.Info("polling setting saved", "choice", choice, "polling", p.String())
+	s.backToSettings(w, r)
 }
 
 // reservedOwners are github.com top-level paths that can never be a user or
@@ -94,12 +156,17 @@ type settingsView struct {
 	AccountLogins      []string
 	Repos              []repoSettingsView
 	Imports            []string
-	PollInterval       string
+	PollingOptions     []pollingOption
+	PollingNow         string
+	PollingManual      bool
 	ClientIDConfigured bool
 }
 
 func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
-	v := settingsView{PollInterval: s.o.PollInterval.String(), Imports: s.importCandidates()}
+	v := settingsView{Imports: s.importCandidates()}
+	if err := s.fillPolling(ctx, &v); err != nil {
+		return v, err
+	}
 	v.ClientIDConfigured = s.o.Auth != nil && s.o.Auth.DeviceConfigured()
 	accounts, err := s.o.Store.Accounts(ctx)
 	if err != nil {
