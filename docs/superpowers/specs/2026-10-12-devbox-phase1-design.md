@@ -51,7 +51,7 @@ later phases build on.
 | D2 | OAuth device flow, classic PAT fallback | In-app login; PAT covers orgs that restrict OAuth apps |
 | D3 | OAuth App (not GitHub App), registered under `thingzio` | Notifications API rejects GitHub App user tokens (needed in Phase 2) |
 | D4 | Each repo belongs to exactly one account; that login is the viewer | Simple; same repo can be added twice under different accounts |
-| D5 | Fingerprint poll every 2m (configurable, min 60s); freshness target ≤ 3m | Cheap change detection, independent of watch settings and notifications |
+| D5 | Fingerprint poll every 2m by default; adjustable 1m–15m or manual (check only on Refresh) in Settings; `--poll-interval` sets the default and a saved Settings choice overrides it; freshness target ≤ 3m when automatic | Cheap change detection, independent of watch settings and notifications; manual suits quiet repositories and tight rate budgets |
 | D6 | Go classifier separate from the Python skill | Avoid parity burden now; revisit after real use |
 | D7 | Server-rendered `html/template` + htmx + SSE, embedded assets | No JS toolchain; one-language testing |
 | D8 | `modernc.org/sqlite`; `CGO_ENABLED=0` for production and cross builds; `CGO_ENABLED=1` for race tests | Pure-Go production binary; race detector can run in Linux CI |
@@ -554,6 +554,14 @@ cache_policy (
 )
 ```
 
+```sql
+settings (
+  key TEXT PRIMARY KEY,                       -- e.g. poll_interval: "manual" or "5m"
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+)
+```
+
 Rules:
 - A `transitions` row is written only when the bucket differs from the stored
   result (or on first classification). Reason and notes changes alone do not
@@ -585,8 +593,16 @@ Rules:
 
 ## 7. Sync Engine (`sync`)
 
-Per repo, each tick (interval from `--poll-interval`, default 2m, minimum 60s,
-with ±10% jitter):
+Polling mode is either an interval from 1m to 15m (±10% jitter) or manual.
+Precedence: a choice saved in Settings (`settings.poll_interval`), else
+`--poll-interval`, else 2m. Changing it at runtime applies at once: an interval
+checks every repository now and then follows the new cadence; manual stops
+background checks. In manual mode repositories are checked only on Refresh,
+except that a repository added or re-enabled while running is checked once.
+Enrichment of what a check found, enrichment retries, and reclassification
+keep running in every mode.
+
+Per repo, each check:
 
 1. Skip if the account is `needs_auth` or paused for rate limit.
 2. Run Fingerprints (all pages). On failure: record `last_error`, increment
@@ -720,7 +736,9 @@ change bucket move correctly. Unified and per-repo views use the ranking in 5.8.
 | `GET /` | Unified queue: action buckets in precedence order with counts; rows: repo · `#n` title · `@author` · age · reason → action; account badge; `also`/notes line; badges: first-time contributor, size, milestone. Then ready-to-merge links; waiting-on-author / own / draft counts; unclassified with errors. Filters: repo, account, bucket (query params). Sort keys displayed. |
 | `GET /r/{owner}/{name}` | Single-repo sweep layout: totals line, buckets, handoff lines with copy button, ready to merge, counts, unclassified. |
 | `GET /r/{owner}/{name}/{n}` | Explain view: result, evidence summary from the record, transition history. |
-| `GET /settings` | Accounts (status, kind, scopes, rate remaining, pause state), repos (add, enable/disable, remove, rules editor with validation errors), import from `~/.config/maintainer-sweep/repos/**.json` (one-time, per file, choose account), effective poll interval (read-only). |
+| `GET /settings` | Accounts (status, kind, scopes, rate remaining, pause state), repos (add, enable/disable, remove, rules editor with validation errors and an explanation of each rule), import from `~/.config/maintainer-sweep/repos/**.json` (one-time, per file, choose account; listed with guidance until an account exists), polling dropdown (Default from `--poll-interval`, Manual, 1m–15m presets). |
+| `POST /settings/polling` | Save the polling choice (`default` clears it) and apply it to the running engine. |
+| `POST /refresh` | Check every enabled repository now; the queue shows "Last checked" and the polling mode next to the Refresh button. |
 | `POST /accounts/device`, `GET /accounts/device/{flow}` | Start and poll device flow. |
 | `POST /accounts/pat`, `POST /accounts/{login}/delete` | PAT add, account removal. |
 | `POST /repos`, `POST /repos/{id}/(enable\|disable\|delete\|rules)` | Repo management. |
@@ -728,7 +746,8 @@ change bucket move correctly. Unified and per-repo views use the ranking in 5.8.
 | `GET /metrics` | Prometheus exposition. |
 | `GET /healthz` | Liveness. |
 
-A header bar shows per-repo staleness when `now - last_success_at > 3m`, account
+A header bar shows per-repo staleness when `now - last_success_at > 3m` (not in
+manual mode, where the queue's "Last checked" replaces it), account
 `needs_auth` banners with a re-authenticate action, and rate-limit pauses with
 resume time. A successful fingerprint poll does not imply all evidence reads
 succeeded: separately show pending enrichment, fatal errors, and optional
@@ -776,7 +795,7 @@ Ages render as whole days since `WaitingSince`, `today` under one day.
 ## 11. CLI
 
 ```
-devbox serve [--addr 127.0.0.1:8484] [--db PATH] [--poll-interval 2m]
+devbox serve [--addr 127.0.0.1:8484] [--db PATH] [--poll-interval 2m|1m..15m|manual]
              [--debug] [--log-format auto|text|json] [--allow-remote]
 devbox version
 ```
