@@ -93,3 +93,13 @@ func TestDefaultPaths(t *testing.T) {
 		t.Fatalf("override import dir = %s", got)
 	}
 }
+
+func TestServeHelpListsNoBrowser(t *testing.T) {
+	var stderr bytes.Buffer
+	if code := run([]string{"serve", "--help"}, &bytes.Buffer{}, &stderr); code != 0 {
+		t.Fatalf("exit = %d", code)
+	}
+	if !strings.Contains(stderr.String(), "--no-browser") {
+		t.Fatalf("help missing --no-browser:\n%s", stderr.String())
+	}
+}

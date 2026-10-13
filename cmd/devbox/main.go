@@ -14,6 +14,7 @@ import (
 	"syscall"
 
 	"github.com/thingzio/devbox/internal/app"
+	"github.com/thingzio/devbox/internal/browser"
 	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/logging"
 	"github.com/thingzio/devbox/internal/syncer"
@@ -106,7 +107,7 @@ func serve(args []string, stderr io.Writer) int {
 		return 2
 	}
 	if !*noBrowser {
-		cfg.Ready = func(addr string) { openBrowser(log, runtime.GOOS, addr, launchDetached) }
+		cfg.Ready = func(addr string) { browser.Open(log, runtime.GOOS, addr, browser.Launch) }
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

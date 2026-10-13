@@ -1,4 +1,5 @@
-package main
+// Package browser opens the DevBox UI in the default browser.
+package browser
 
 import (
 	"context"
@@ -9,9 +10,9 @@ import (
 	"os/exec"
 )
 
-// browserURL is the UI address for a local browser; an unspecified listen
+// URL is the UI address for a local browser; an unspecified listen
 // address (0.0.0.0 or ::) is reached through loopback.
-func browserURL(addr string) string {
+func URL(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
 		return "http://" + addr + "/"
@@ -22,8 +23,8 @@ func browserURL(addr string) string {
 	return (&url.URL{Scheme: "http", Host: net.JoinHostPort(host, port), Path: "/"}).String()
 }
 
-// browserCommand is the command that opens u in the default browser on goos.
-func browserCommand(goos, u string) (string, []string, error) {
+// command is the command that opens u in the default browser on goos.
+func command(goos, u string) (string, []string, error) {
 	switch goos {
 	case "darwin":
 		return "open", []string{u}, nil
@@ -35,11 +36,11 @@ func browserCommand(goos, u string) (string, []string, error) {
 	return "", nil, fmt.Errorf("no default-browser command for %s", goos)
 }
 
-// openBrowser opens the UI at addr; failure only logs, since the server is
+// Open opens the UI at addr; failure only logs, since the server is
 // already up and the URL can be opened by hand.
-func openBrowser(log *slog.Logger, goos, addr string, launch func(name string, args ...string) error) {
-	u := browserURL(addr)
-	name, args, err := browserCommand(goos, u)
+func Open(log *slog.Logger, goos, addr string, launch func(name string, args ...string) error) {
+	u := URL(addr)
+	name, args, err := command(goos, u)
 	if err == nil {
 		err = launch(name, args...)
 	}
@@ -50,9 +51,9 @@ func openBrowser(log *slog.Logger, goos, addr string, launch func(name string, a
 	log.Debug("opened the browser", "url", u)
 }
 
-// launchDetached starts a command without waiting for it to finish. It is not
+// Launch starts a command without waiting for it to finish. It is not
 // tied to the server's context: the opener may outlive a quick shutdown.
-func launchDetached(name string, args ...string) error {
+func Launch(name string, args ...string) error {
 	cmd := exec.CommandContext(context.Background(), name, args...) //nolint:gosec // fixed per-OS opener; the only argument is the server's own URL
 	if err := cmd.Start(); err != nil {
 		return err
