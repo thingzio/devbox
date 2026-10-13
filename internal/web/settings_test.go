@@ -285,3 +285,25 @@ func TestRulesEditorExplainsRules(t *testing.T) {
 		}
 	}
 }
+
+// TestImportAcceptsOnlyListedOverlays: the request selects one of the files
+// the server listed; it never names a path to open.
+func TestImportAcceptsOnlyListedOverlays(t *testing.T) {
+	ts := newTestServer(t)
+	ts.account("me")
+	dir := filepath.Join(ts.importDir, "NVIDIA")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "aicr.json"), []byte(`{"stale_days":7}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range []string{"nvidia/aicr.json", "NVIDIA/AICR.json", "NVIDIA/./aicr.json", "NVIDIA/aicr.json/"} {
+		if code, _, _ := ts.post("/import", url.Values{"file": {file}, "account": {"me"}}); code != http.StatusUnprocessableEntity {
+			t.Errorf("import %q = %d, want 422: only listed overlays import", file, code)
+		}
+	}
+	if repos, _ := ts.db.Repos(ts.ctx); len(repos) != 0 {
+		t.Fatalf("unlisted file imported: %+v", repos)
+	}
+}

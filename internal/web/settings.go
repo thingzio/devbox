@@ -396,14 +396,19 @@ func (s *Server) importCandidates() []string {
 	return out
 }
 
+// handleImport imports one of the overlays importCandidates listed. The
+// request only selects a listed file; the path opened comes from the directory
+// listing, never from the request.
 func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 	file := r.PostFormValue("file")
-	m := importPattern.FindStringSubmatch(file)
-	if m == nil || m[2] == "." || m[2] == ".." || s.o.ImportDir == "" {
+	candidates := s.importCandidates()
+	i := slices.Index(candidates, file)
+	if i < 0 {
 		s.reject(w, r, fmt.Errorf("%q is not an importable overlay", file))
 		return
 	}
-	data, err := os.ReadFile(filepath.Join(s.o.ImportDir, m[1], m[2]+".json")) //nolint:gosec // owner and name are validated and joined under the import directory
+	m := importPattern.FindStringSubmatch(candidates[i])
+	data, err := os.ReadFile(filepath.Join(s.o.ImportDir, m[1], m[2]+".json")) //nolint:gosec // owner and name come from the import directory listing
 	if err != nil {
 		s.reject(w, r, fmt.Errorf("read %s: %w", file, err))
 		return

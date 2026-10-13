@@ -85,9 +85,11 @@ func (s *Server) handleRefresh(w http.ResponseWriter, r *http.Request) {
 // localPath returns next when it is a path on this server, otherwise "/", so a
 // redirect can never leave the app.
 func localPath(next string) string {
-	u, err := url.Parse(next)
-	if err != nil || u.Scheme != "" || u.Host != "" || !strings.HasPrefix(next, "/") ||
-		strings.HasPrefix(next, "//") || strings.Contains(next, `\`) {
+	// "//host" and "/\host" are protocol-relative to browsers.
+	if next == "" || next[0] != '/' || (len(next) > 1 && (next[1] == '/' || next[1] == '\\')) {
+		return "/"
+	}
+	if u, err := url.Parse(next); err != nil || u.Scheme != "" || u.Host != "" || strings.Contains(next, `\`) {
 		return "/"
 	}
 	return next

@@ -56,6 +56,8 @@ func TestRefreshReturnsToLocalPage(t *testing.T) {
 		"https://evil.example/":    "/",
 		"settings":                 "/",
 		"/%2F%2Fevil.example/path": "/%2F%2Fevil.example/path",
+		"/\t/evil.example":         "/",
+		"/":                        "/",
 	}
 	for next, want := range cases {
 		code, _, hdr := ts.post("/refresh", url.Values{"next": {next}})
