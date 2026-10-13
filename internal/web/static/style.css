@@ -30,3 +30,8 @@ form.inline { display: inline-flex; gap: 0.5rem; align-items: center; margin: 0.
 textarea { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1.2em; letter-spacing: 0.1em; }
 details.repo { padding: 0.5rem 0; border-bottom: 1px solid var(--line); }
+details.help { margin: 0.5rem 0 0.25rem; color: var(--muted); }
+details.help summary { cursor: pointer; color: var(--accent); }
+details.help dt { margin-top: 0.5rem; color: var(--fg); }
+details.help dd { margin: 0.15rem 0 0 1rem; }
+details.help pre { padding: 0.5rem 0.75rem; border: 1px solid var(--line); border-radius: 6px; overflow-x: auto; color: var(--fg); }

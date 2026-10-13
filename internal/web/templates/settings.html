@@ -24,7 +24,8 @@
 {{range .Repos}}<details class="repo"><summary><strong>{{.Name}}</strong> @{{.Account}} · {{if .Enabled}}enabled{{else}}disabled{{end}}{{if .LastError}} · last error: {{.LastError}}{{end}}</summary>
 <form method="post" action="/repos/{{.ID}}/{{if .Enabled}}disable{{else}}enable{{end}}" class="inline"><button type="submit">{{if .Enabled}}Disable{{else}}Enable{{end}}</button></form>
 <form method="post" action="/repos/{{.ID}}/delete" class="inline"><button type="submit">Remove</button></form>
-<form method="post" action="/repos/{{.ID}}/rules"><label>Rules (maintainer-sweep overlay JSON)<textarea name="rules" rows="10">{{.RulesJSON}}</textarea></label><button type="submit">Save rules</button></form>
+<form method="post" action="/repos/{{.ID}}/rules"><label>Rules (JSON)<textarea name="rules" rows="10">{{.RulesJSON}}</textarea></label><button type="submit">Save rules</button></form>
+{{template "rules-help"}}
 </details>{{else}}<p>No repositories yet.</p>{{end}}
 </section>
 
@@ -42,3 +43,34 @@
 {{else if .Done}}<p>Added @{{.Login}}. <a href="/settings">Refresh</a></p>
 {{else}}<p class="banner warn">{{.Error}}</p>{{end}}
 </div>{{end}}
+
+
+{{define "rules-help"}}<details class="help"><summary>What do these rules do?</summary>
+<dl>
+<dt><code>stale_days</code></dt>
+<dd>Days a PR can sit after your changes-requested review with no reply or push from the author before it moves to <em>Stale changes requested</em>, so you can nudge the author or close it. Default 7.</dd>
+<dt><code>test_approval</code></dt>
+<dd>Only for repositories where CI on pull requests from forks waits for a maintainer. Leave it as <code>{}</code> otherwise; workflow runs that GitHub holds for approval are detected either way.
+<dl>
+<dt><code>marker_checks</code></dt>
+<dd>Check names that only appear once tests were approved. A fork PR whose latest commit has none of them is listed under <em>Waiting test approval</em>.</dd>
+<dt><code>command</code></dt>
+<dd>The comment that approves tests, suggested as the action, for example <code>/ok-to-test</code>.</dd>
+<dt><code>ci_paths</code></dt>
+<dd>Path prefixes that deserve extra care, such as <code>.github/</code>. When a PR changes one, or its file list can't be read, <code>ci_paths_command</code> is suggested instead.</dd>
+<dt><code>ci_paths_command</code></dt>
+<dd>The approval comment to suggest when CI files change.</dd>
+</dl></dd>
+</dl>
+<p>Example:</p>
+<pre>{
+  "test_approval": {
+    "marker_checks": ["tests / Test", "tests-skip"],
+    "command": "/ok-to-test",
+    "ci_paths": [".github/"],
+    "ci_paths_command": "/ok-to-test confirm-ci"
+  },
+  "stale_days": 7
+}</pre>
+<p>Saving a change to <code>test_approval</code> re-reads every open PR in the repository; changing only <code>stale_days</code> re-sorts the queue without GitHub calls.</p>
+</details>{{end}}

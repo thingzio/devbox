@@ -269,3 +269,19 @@ func TestSettingsWithoutAccountsGuidesInsteadOfFailing(t *testing.T) {
 		}
 	}
 }
+
+func TestRulesEditorExplainsRules(t *testing.T) {
+	ts := newTestServer(t)
+	ts.repo(ts.account("me"), "o", "r")
+	_, body := ts.get("/settings")
+	for _, want := range []string{
+		"What do these rules do?",
+		"<code>stale_days</code>", "<code>test_approval</code>", "<code>marker_checks</code>",
+		"<code>command</code>", "<code>ci_paths</code>", "<code>ci_paths_command</code>",
+		"Waiting test approval", "Stale changes requested", "/ok-to-test confirm-ci",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rules help missing %q", want)
+		}
+	}
+}
