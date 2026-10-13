@@ -173,12 +173,17 @@ func (s *Server) logRequests(next http.Handler) http.Handler {
 
 type pageData struct {
 	Title  string
+	Nav    string // "queue" or "settings"; repo and explain pages belong to the queue
 	Status statusView
 	Body   any
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request, page string, status int, data pageData) {
 	data.Status = s.buildStatus(r.Context())
+	data.Nav = "queue"
+	if page == "settings" {
+		data.Nav = "settings"
+	}
 	var buf bytes.Buffer
 	if err := s.pages[page].ExecuteTemplate(&buf, "layout", data); err != nil {
 		s.o.Log.Error("render page", "page", page, "err", err)

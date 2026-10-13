@@ -283,3 +283,17 @@ func TestBrowserPostWithNullOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestNavMarksCurrentPage(t *testing.T) {
+	ts := newTestServer(t)
+	cases := map[string]struct{ current, other string }{
+		"/":         {`href="/" aria-current="page"`, `href="/settings" aria-current="page"`},
+		"/settings": {`href="/settings" aria-current="page"`, `href="/" aria-current="page"`},
+	}
+	for path, want := range cases {
+		_, body := ts.get(path)
+		if !strings.Contains(body, want.current) || strings.Contains(body, want.other) {
+			t.Errorf("GET %s: nav does not mark the current page only", path)
+		}
+	}
+}

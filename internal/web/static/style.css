@@ -6,6 +6,8 @@ a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 header.top { display: flex; gap: 1.5rem; align-items: center; padding: 0.6rem 1.25rem; border-bottom: 1px solid var(--line); }
 header.top nav { display: flex; gap: 1rem; }
+header.top nav a { padding-bottom: 0.15rem; border-bottom: 2px solid transparent; }
+header.top nav a[aria-current="page"] { color: var(--fg); font-weight: 600; border-bottom-color: var(--accent); }
 .brand { font-weight: 600; color: var(--fg); }
 main { padding: 1rem 1.25rem; max-width: 72rem; }
 .status { padding: 0.5rem 1.25rem 0; }

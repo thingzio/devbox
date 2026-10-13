@@ -10,7 +10,7 @@
 <script src="/static/app.js" defer></script>
 </head>
 <body>
-<header class="top"><a class="brand" href="/">devbox</a><nav><a href="/">Queue</a><a href="/settings">Settings</a></nav></header>
+<header class="top"><a class="brand" href="/">devbox</a><nav><a href="/"{{if eq .Nav "queue"}} aria-current="page"{{end}}>Queue</a><a href="/settings"{{if eq .Nav "settings"}} aria-current="page"{{end}}>Settings</a></nav></header>
 {{template "status" .Status}}
 <main>{{template "content" .Body}}</main>
 </body>
