@@ -1,0 +1,65 @@
+name: Bug report
+description: Something behaves differently than documented or expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file this. If you think you have found a
+        security vulnerability, please **stop** and follow
+        [SECURITY.md](../../blob/main/SECURITY.md) instead — do not file it here.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you observe?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: >
+        The smallest set of steps that triggers it: which page, which repository
+        or pull request state, and what you clicked. A failing test is ideal.
+      placeholder: |
+        1. Run `...`
+        2. Observe `...`
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Output of `devbox version`, or the version in the page footer.
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS and architecture, browser, how you installed DevBox, and the `devbox serve` flags you use.
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: >
+        Logs from `devbox serve --debug` help most. They are formatted as code
+        automatically. DevBox never logs tokens, but **check before pasting**.
+      render: shell
+    validations:
+      required: false

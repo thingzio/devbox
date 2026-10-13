@@ -1,0 +1,14 @@
+# Default owner for everything not matched below.
+* @mchmarny
+
+# Credential handling and the local server's security boundary.
+/internal/auth/ @mchmarny
+/internal/web/server.go @mchmarny
+
+# Supply chain and release plumbing.
+/.github/ @mchmarny
+/.goreleaser.yaml @mchmarny
+/.versions.yaml @mchmarny
+/hack/ @mchmarny
+/NOTICE @mchmarny
+/LICENSE @mchmarny
