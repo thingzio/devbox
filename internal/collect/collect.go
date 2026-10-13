@@ -40,7 +40,7 @@ type Input struct {
 // Kind classifies an enrichment outcome.
 type Kind int
 
-// Outcome kinds (§4.3, §7).
+// Outcome kinds.
 const (
 	Collected Kind = iota + 1
 	Mismatch
@@ -66,7 +66,7 @@ type Collector struct {
 	Log    *slog.Logger
 }
 
-// Collect reads detail and follow-up evidence for in (§4.3).
+// Collect reads detail and follow-up evidence for in.
 func (c *Collector) Collect(ctx context.Context, in Input) Outcome {
 	log := c.Log
 	if log == nil {
@@ -192,7 +192,7 @@ func (f *followUp) testApproval(ctx context.Context) error {
 
 // lastCommentAt is the viewer's latest hand-off to the author: the newest issue
 // comment after the viewer's latest review that is not a slash command, else
-// that review's time (§4.3 step 2).
+// that review's time.
 func (f *followUp) lastCommentAt(ctx context.Context) (*time.Time, error) {
 	var reviewed *time.Time
 	for _, r := range f.rec.MyReviews {

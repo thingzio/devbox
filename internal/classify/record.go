@@ -1,11 +1,11 @@
 // Package classify turns normalized pull request evidence into the action the
-// maintainer owes (§5). It performs no I/O and never reads the clock.
+// maintainer owes. It performs no I/O and never reads the clock.
 package classify
 
 import "time"
 
 // RecordVersion changes whenever Record's shape or normalization changes;
-// stored records with another version are re-collected (§4.3).
+// stored records with another version are re-collected.
 const RecordVersion = 1
 
 // Review is one of the viewer's submitted reviews; slices are chronological.
@@ -41,14 +41,14 @@ type Unverified struct {
 	Reason string `json:"reason"`
 }
 
-// EvidenceError records an optional read that failed and fell back (§4.3).
+// EvidenceError records an optional read that failed and fell back.
 type EvidenceError struct {
 	Field     string `json:"field"`
 	Message   string `json:"message"`
 	Retryable bool   `json:"retryable"`
 }
 
-// CoreRetry marks retained evidence while a retryable core read keeps failing (§7).
+// CoreRetry marks retained evidence while a retryable core read keeps failing.
 type CoreRetry struct {
 	Message string    `json:"message"`
 	Since   time.Time `json:"since"`
@@ -60,7 +60,7 @@ type Milestone struct {
 	DueOn *time.Time `json:"due_on,omitempty"`
 }
 
-// Record is the normalized evidence for one pull request (§4.3).
+// Record is the normalized evidence for one pull request.
 type Record struct {
 	Version             int             `json:"version"`
 	CollectionRulesHash string          `json:"collection_rules_hash"`
@@ -113,7 +113,7 @@ type Record struct {
 }
 
 // HeadActivityAt is the observed head change, else the head commit date
-// clamped to PR creation; commit dates are author-controlled (§4.3).
+// clamped to PR creation; commit dates are author-controlled.
 func (r Record) HeadActivityAt() time.Time {
 	if r.HeadChangedAt != nil {
 		return *r.HeadChangedAt

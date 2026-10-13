@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Rankable carries the fields the queue sorts by (§5.8).
+// Rankable carries the fields the queue sorts by.
 type Rankable struct {
 	Bucket       Bucket
 	MilestoneDue *time.Time
@@ -80,7 +80,7 @@ func SizeBadge(additions, deletions int) string {
 	}
 }
 
-// Handoff is the per-repo line shown under a bucket (§5.7), or "".
+// Handoff is the per-repo line shown under a bucket, or "".
 func Handoff(b Bucket, urls []string) string {
 	switch b {
 	case NeedsRereview, NeedsInitialReview, Bot:

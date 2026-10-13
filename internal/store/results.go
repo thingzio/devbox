@@ -20,7 +20,7 @@ type ResultRow struct {
 	Notes        []string
 }
 
-// Transition is one bucket change in the append-only log (§6).
+// Transition is one bucket change in the append-only log.
 type Transition struct {
 	ID     int64
 	RepoID int64

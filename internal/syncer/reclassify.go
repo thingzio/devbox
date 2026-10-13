@@ -10,7 +10,7 @@ import (
 )
 
 // Reclassify re-runs classification on stored open records without GitHub
-// reads; repoID 0 means every enabled repository. Passes are serialized (§7).
+// reads; repoID 0 means every enabled repository. Passes are serialized.
 func (e *Engine) Reclassify(ctx context.Context, repoID int64) error {
 	e.reclassMu.Lock()
 	defer e.reclassMu.Unlock()
@@ -51,7 +51,7 @@ func (e *Engine) reclassifyItems(ctx context.Context, items []store.Classifiable
 }
 
 // RulesChanged reacts to a rules edit: a collection change cancels obsolete
-// work and wakes the dispatcher; a stale_days-only edit reclassifies now (§6).
+// work and wakes the dispatcher; a stale_days-only edit reclassifies now.
 func (e *Engine) RulesChanged(ctx context.Context, repoID int64, collectionChanged bool) error {
 	if collectionChanged {
 		e.cancelRepo(repoID)

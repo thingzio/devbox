@@ -1,5 +1,5 @@
 // Package collect reads GitHub evidence for pull requests and normalizes it
-// into classify.Record (§4.2, §4.3).
+// into classify.Record.
 package collect
 
 import (
@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// FingerprintFields are the PR fields whose change triggers re-enrichment (§4.2).
+// FingerprintFields are the PR fields whose change triggers re-enrichment.
 type FingerprintFields struct {
 	UpdatedAt      time.Time
 	BaseOID        string

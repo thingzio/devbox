@@ -1,4 +1,4 @@
-// Package github is a bounded, read-only GitHub API client (§4.1).
+// Package github is a bounded, read-only GitHub API client.
 package github
 
 import (

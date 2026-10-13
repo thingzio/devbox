@@ -13,7 +13,7 @@ type safetyCandidate struct {
 	last *time.Time
 }
 
-// Plan turns a complete fingerprint observation into store writes (§7 steps 3-4).
+// Plan turns a complete fingerprint observation into store writes.
 // It is pure: the store applies the plan under revision guards.
 func Plan(repo store.Repo, states []store.PRState, observed []collect.Observed, now time.Time, recordVersion int) store.PollApply {
 	p := store.PollApply{RepoID: repo.ID, RepoRevision: repo.Revision, Owner: repo.Owner, Name: repo.Name, Now: now}
@@ -70,7 +70,7 @@ func Plan(repo store.Repo, states []store.PRState, observed []collect.Observed, 
 }
 
 // lastCollection is when the PR was last collected for safety-reconcile
-// purposes; a fatal attempt bounds it without counting as success (§7).
+// purposes; a fatal attempt bounds it without counting as success.
 func lastCollection(s store.PRState) *time.Time {
 	last := s.RecordAt
 	if s.Error != "" && s.LastEnrichAttemptAt != nil && (last == nil || s.LastEnrichAttemptAt.After(*last)) {

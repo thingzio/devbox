@@ -247,7 +247,7 @@ func (s *Server) when(t *time.Time) string {
 	return t.In(s.o.Location).Format(time.DateTime)
 }
 
-// evidence summarizes the stored record for the explain view (§9).
+// evidence summarizes the stored record for the explain view.
 func (s *Server) evidence(d store.PRDetail) []kv {
 	out := []kv{
 		{"First seen", s.when(&d.FirstSeenAt)},
@@ -303,7 +303,7 @@ func (s *Server) handleStatusFragment(w http.ResponseWriter, r *http.Request) {
 	s.renderFragment(w, "queue", "live-status", v)
 }
 
-// handleEvents streams change events (§9) until the client or server goes away.
+// handleEvents streams change events until the client or server goes away.
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	rc := http.NewResponseController(w)
 	h := w.Header()

@@ -16,7 +16,7 @@ func login(a *Actor) string {
 	return a.Login
 }
 
-// Normalize converts a detail node into a Record (§4.3). When mandatory
+// Normalize converts a detail node into a Record. When mandatory
 // evidence is incomplete it returns an error together with the partially
 // filled record so an error result keeps its title and link.
 func Normalize(d *Detail, viewer string, headChangedAt *time.Time) (classify.Record, error) {

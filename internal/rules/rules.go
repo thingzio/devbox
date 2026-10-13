@@ -100,8 +100,8 @@ func (r Rules) JSON() string {
 	return string(b)
 }
 
-// CollectionHash identifies the settings that govern which evidence is read
-// (§4.3). Order of list entries and stale_days do not affect it.
+// CollectionHash identifies the settings that govern which evidence is read.
+// Order of list entries and stale_days do not affect it.
 func (r Rules) CollectionHash() string {
 	ta := r.TestApproval
 	canonical := struct {

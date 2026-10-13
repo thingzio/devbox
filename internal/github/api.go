@@ -25,7 +25,7 @@ func checkReadOnly(query string) error {
 }
 
 // GraphQL runs a read-only query and decodes its data into out. A non-empty
-// errors array is a failure: partial data is unusable (§4.1).
+// errors array is a failure: partial data is unusable.
 func (c *Client) GraphQL(ctx context.Context, op, query string, vars map[string]any, out any) error {
 	if err := checkReadOnly(query); err != nil {
 		return err

@@ -78,7 +78,7 @@ func (n fingerprintNode) fields() FingerprintFields {
 	}
 }
 
-// Fingerprints lists every open PR with its fingerprint; a repeated cursor is an error (§4.2).
+// Fingerprints lists every open PR with its fingerprint; a repeated cursor is an error.
 func (g GitHubReader) Fingerprints(ctx context.Context, owner, name string) ([]Observed, error) {
 	var out []Observed
 	seen := map[string]bool{}

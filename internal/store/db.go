@@ -1,4 +1,4 @@
-// Package store persists devbox state in SQLite (§6).
+// Package store persists devbox state in SQLite.
 package store
 
 import (

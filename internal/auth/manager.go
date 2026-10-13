@@ -15,7 +15,7 @@ import (
 	"github.com/thingzio/devbox/internal/store"
 )
 
-// Token validation errors (§8).
+// Token validation errors.
 var (
 	ErrFineGrained  = errors.New("fine-grained tokens cannot read notifications; use a classic token with the repo scope")
 	ErrMissingScope = errors.New("the token lacks the repo scope")
@@ -107,7 +107,7 @@ func NewManager(ctx context.Context, o ManagerOptions) *Manager {
 // DeviceConfigured reports whether a client ID is available for the device flow.
 func (m *Manager) DeviceConfigured() bool { return m.o.Device != nil && m.o.Device.ClientID != "" }
 
-// StartDevice begins a device flow, cancelling any previous one (§8).
+// StartDevice begins a device flow, cancelling any previous one.
 func (m *Manager) StartDevice(ctx context.Context) (FlowView, error) {
 	if m.o.Device == nil {
 		return FlowView{}, errors.New("auth: device flow is not configured")
@@ -167,7 +167,7 @@ func (m *Manager) Flow(id string) (FlowView, bool) {
 	return m.flow.view, true
 }
 
-// AddPAT verifies and stores a classic personal access token (§8).
+// AddPAT verifies and stores a classic personal access token.
 func (m *Manager) AddPAT(ctx context.Context, token string) (store.Account, error) {
 	token = strings.TrimSpace(token)
 	switch {

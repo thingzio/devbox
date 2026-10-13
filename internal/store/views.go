@@ -119,7 +119,7 @@ FROM prs WHERE repo_id = ? AND number = ?`, repo.ID, number).Scan(&d.Title, &d.U
 	return out, nil
 }
 
-// RepoStatus is the header-bar health of one repository (§9).
+// RepoStatus is the header-bar health of one repository.
 type RepoStatus struct {
 	Repo          Repo
 	Sync          RepoSync
@@ -171,7 +171,7 @@ type BucketCount struct {
 	Count  int
 }
 
-// BucketCounts feeds the devbox_prs gauge; disabled repos are excluded (§7).
+// BucketCounts feeds the devbox_prs gauge; disabled repos are excluded.
 func (db *DB) BucketCounts(ctx context.Context) ([]BucketCount, error) {
 	rows, err := db.r.QueryContext(ctx, `SELECT r.owner || '/' || r.name, res.bucket, COUNT(*)
 FROM results res JOIN prs p ON p.repo_id = res.repo_id AND p.number = res.number JOIN repos r ON r.id = p.repo_id

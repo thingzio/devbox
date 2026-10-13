@@ -13,7 +13,7 @@ import (
 	"github.com/thingzio/devbox/internal/store"
 )
 
-// PollRepo runs one fingerprint poll (§7) and returns the repository's
+// PollRepo runs one fingerprint poll and returns the repository's
 // consecutive failure count for backoff.
 func (e *Engine) PollRepo(ctx context.Context, repoID int64) (int, error) {
 	repo, err := e.d.Store.Repo(ctx, repoID)
@@ -90,7 +90,7 @@ func (e *Engine) recordPoll(ctx context.Context, log *slog.Logger, repo store.Re
 	return s.ConsecutiveFailures, pollErr
 }
 
-// pollDelay is the jittered interval, or min(interval × 2^failures, 15m) after failures (§7).
+// pollDelay is the jittered interval, or min(interval × 2^failures, 15m) after failures.
 func (e *Engine) pollDelay(failures int) time.Duration {
 	interval := e.Polling().Interval
 	if failures <= 0 {

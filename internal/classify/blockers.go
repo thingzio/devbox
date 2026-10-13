@@ -16,7 +16,7 @@ var (
 	eligibleStates   = map[string]bool{"CLEAN": true, "HAS_HOOKS": true, "UNSTABLE": true}
 )
 
-// mergeBlockers names why GitHub would refuse the merge (§5.4); empty means mergeable.
+// mergeBlockers names why GitHub would refuse the merge; empty means mergeable.
 func mergeBlockers(rec Record) []cause {
 	var causes []cause
 	switch state := rec.MergeState; {

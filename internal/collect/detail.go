@@ -2,7 +2,7 @@ package collect
 
 import "time"
 
-// GraphQL response shapes for PullRequestDetail (§4.2).
+// GraphQL response shapes for PullRequestDetail.
 type (
 	Actor struct {
 		Login    string `json:"login"`
@@ -102,7 +102,7 @@ func (d *Detail) headCommit() *Commit {
 	return nil
 }
 
-// FingerprintFields makes a detail read a complete observation (§4.2).
+// FingerprintFields makes a detail read a complete observation.
 func (d *Detail) FingerprintFields() FingerprintFields {
 	rollup := ""
 	if hc := d.headCommit(); hc != nil && hc.StatusCheckRollup != nil {

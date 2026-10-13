@@ -36,3 +36,8 @@ go.work.sum
 /bin/
 /dist/
 .DS_Store
+
+# local-only design notes and agent workspaces
+/docs/superpowers/
+/.superpowers/
+/AGENTS.local.md

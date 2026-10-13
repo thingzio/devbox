@@ -276,7 +276,7 @@ func notes(items []string) []noteView {
 	return out
 }
 
-// age renders whole days since t, "today" under one day (§9).
+// age renders whole days since t, "today" under one day.
 func age(now time.Time, since *time.Time) string {
 	if since == nil {
 		return "—"
@@ -318,7 +318,7 @@ type statusView struct {
 }
 
 // buildStatus feeds the header: auth problems, rate pauses, staleness,
-// enrichment backlog (§9), and the sync heartbeat. Disabled repositories are omitted.
+// enrichment backlog, and the sync heartbeat. Disabled repositories are omitted.
 func (s *Server) buildStatus(ctx context.Context) statusView {
 	var v statusView
 	now := s.o.Now()

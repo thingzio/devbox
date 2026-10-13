@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// Device flow terminal errors (§8).
+// Device flow terminal errors.
 var (
 	ErrExpired = errors.New("code expired, start again")
 	ErrDenied  = errors.New("authorization denied")

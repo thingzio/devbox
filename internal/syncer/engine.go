@@ -1,6 +1,5 @@
 // Package syncer polls GitHub, schedules enrichment, and keeps stored results
-// current (§7). It is the spec's "sync" package, renamed to avoid shadowing
-// the standard library.
+// current. It is named syncer to avoid shadowing the standard library's sync.
 package syncer
 
 import (
@@ -190,7 +189,7 @@ func (e *Engine) ReposChanged() { signal(e.resync) }
 // Wait blocks until every started enrichment job has finished.
 func (e *Engine) Wait() { e.wg.Wait() }
 
-// ObserveRate records a rate reading and pauses the account below 10% remaining (§7).
+// ObserveRate records a rate reading and pauses the account below 10% remaining.
 func (e *Engine) ObserveRate(account string, r github.Rate) {
 	if r.Resource != "" {
 		e.d.Metrics.RateRemaining.WithLabelValues(account, r.Resource).Set(float64(r.Remaining))

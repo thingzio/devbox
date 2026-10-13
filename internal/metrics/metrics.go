@@ -1,4 +1,4 @@
-// Package metrics defines devbox's Prometheus metrics (§10).
+// Package metrics defines devbox's Prometheus metrics.
 package metrics
 
 import (

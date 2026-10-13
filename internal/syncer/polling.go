@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Polling interval bounds and default (spec D5).
+// Polling interval bounds and default.
 const (
 	MinPollInterval     = time.Minute
 	MaxPollInterval     = 15 * time.Minute

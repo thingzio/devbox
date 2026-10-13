@@ -5,6 +5,7 @@ covers what you need to know to build, test, and change DevBox.
 
 ## Table of Contents
 
+- [Code of Conduct](#code-of-conduct)
 - [Project governance](#project-governance)
 - [Getting started](#getting-started)
 - [Design principles](#design-principles)
@@ -15,13 +16,19 @@ covers what you need to know to build, test, and change DevBox.
 - [Pull request process](#pull-request-process)
 - [Code style](#code-style)
 - [Commits](#commits)
+- [Releases](#releases)
+
+## Code of Conduct
+
+Be respectful and professional. See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## Project governance
 
 This is a single-maintainer project, maintained on a best-effort basis.
 Decisions about what gets merged, what ships, and what is in scope are the
-maintainer's. There is no review-time commitment: a pull request may be reviewed
-the same day or sit for weeks.
+maintainer's, listed in [MAINTAINERS.md](MAINTAINERS.md). There is no
+review-time commitment: a pull request may be reviewed the same day or sit for
+weeks. If something is urgent for you, say so in the pull request.
 
 - **Small, focused pull requests get reviewed fastest.**
 - **Open an issue before a large change.** Finding out a direction is wrong after
@@ -31,9 +38,10 @@ the same day or sit for weeks.
 
 ## Getting started
 
-You need Go (the version in `.versions.yaml`) and `make`. Pinned linters and
-scanners run through `go run`, so there is nothing else to install. You do not
-need any credentials from the maintainer.
+You need Go (the version in `.versions.yaml`), `make`, and `python3` (for the
+notices generator). Pinned linters and scanners run through `go run`, so there
+is nothing else to install. You do not need any credentials from the
+maintainer; if a step seems to require some, that is a bug.
 
 ```bash
 git clone https://github.com/thingzio/devbox && cd devbox
@@ -43,7 +51,13 @@ make lint      # golangci-lint
 make vuln      # govulncheck
 make cover     # tests plus the coverage floor
 make cross     # darwin, linux, and windows binaries without cgo
+make qualify   # the full gate CI runs: lint, actionlint, vuln, cover, cross, notices
+make snapshot  # a local dry run of the release build (goreleaser)
+make secrets   # gitleaks over the full git history
 ```
+
+`make qualify` is the same gate CI runs. If it passes locally it should pass in
+CI; if it does not, that is worth an issue.
 
 `make build CLIENT_ID=<id>` bakes in the OAuth App client ID that enables
 **Sign in with GitHub**; without it, use a classic token, or set
@@ -55,8 +69,8 @@ so you don't touch your everyday database.
 ## Design principles
 
 - **Local development equals CI.** `.versions.yaml` is the single source of
-  truth for the Go, golangci-lint, and govulncheck versions; the Makefile and CI
-  both read it. If `make test lint vuln cover cross` passes locally, CI passes.
+  truth for the Go toolchain and every pinned tool; the Makefile and CI both
+  read it.
 - **Correctness must be reproducible.** The classifier is a pure function of
   the stored record and the repository's rules: the same inputs always produce
   the same bucket, reason, and action.
@@ -69,14 +83,14 @@ so you don't touch your everyday database.
 - **Boring first.** Pure-Go SQLite (`modernc.org/sqlite`), server-rendered
   `html/template`, and vendored htmx; no JavaScript build step.
 
-The full design is in
-[docs/superpowers/specs/2026-10-12-devbox-phase1-design.md](docs/superpowers/specs/2026-10-12-devbox-phase1-design.md).
+[AGENTS.md](AGENTS.md) holds the same rules in the form coding agents read; keep
+the two in step.
 
 ## Architecture
 
 | Package | Responsibility |
 |---------|----------------|
-| `cmd/devbox` | CLI: flags, logging, signals, opening the browser |
+| `cmd/devbox` | CLI entry point: flags, logging, signals |
 | `internal/app` | Wires the store, auth, sync engine, and web server; owns startup and shutdown |
 | `internal/github` | Read-only GitHub client: REST and GraphQL, retries, typed errors, rate observation |
 | `internal/auth` | Device flow, classic tokens, and the OS keychain |
@@ -87,6 +101,7 @@ The full design is in
 | `internal/syncer` | Per-repository pollers, enrichment dispatch with per-account fairness, polling modes |
 | `internal/hub` | In-process publish/subscribe for change and poll events |
 | `internal/web` | HTTP UI: templates, htmx fragments, server-sent events, security headers |
+| `internal/browser` | Opens the UI in the default browser (`open`, `xdg-open`, `rundll32`) |
 | `internal/metrics`, `internal/logging`, `internal/version` | Prometheus metrics, `slog` setup, build version |
 
 A poll fetches cheap fingerprints; only changed pull requests are enriched,
@@ -129,6 +144,10 @@ dark with the OS, tokens defined at the top of `internal/web/static/style.css`.
 
 ### Reporting bugs
 
+> **Security vulnerabilities do not go here.** Report them privately through
+> [GitHub Security Advisories](https://github.com/thingzio/devbox/security/advisories/new).
+> See [SECURITY.md](SECURITY.md) for scope and response times.
+
 Open an [issue](https://github.com/thingzio/devbox/issues/new) with the smallest
 reproduction you can manage: a failing test is ideal, a command with its output
 (run with `--debug`) is good. Never paste tokens.
@@ -143,13 +162,15 @@ in mind; the problem statement is the part most likely to change the design.
 Read the surrounding code first and match it. Consistency with what is already
 there beats an individually better pattern applied in one place. Add Go
 dependencies at their latest release unless there is a concrete reason not to,
-and say why next to the pin when there is.
+and say why next to the pin when there is. A new dependency changes what
+release binaries redistribute: run `make notices` and commit
+`THIRD_PARTY_NOTICES.md`.
 
 ## Pull request process
 
-1. **Make the gates pass:** `make test lint vuln cover cross`.
+1. **Make `make qualify` pass.**
 2. **Update documentation** if you changed behavior someone depends on: user
-   behavior in `README.md`, developer workflow here, and the design spec.
+   behavior in `README.md`, developer workflow here and in `AGENTS.md`.
 3. **Open the pull request against `main`** with a clear summary, referencing
    related issues (`Fixes #123`).
 
@@ -172,3 +193,9 @@ unsigned commits. Messages follow [Conventional
 Commits](https://www.conventionalcommits.org): `feat:`, `fix:`, `docs:`,
 `refactor:`, `test:`, `chore:`, `ci:`. The subject says what changed; the body
 says why.
+
+## Releases
+
+Releases are cut by the maintainer from signed tags; the pipeline signs the
+checksums, attests SLSA Build Level 3 provenance, attaches SBOMs, and updates
+the Homebrew tap. See [RELEASING.md](RELEASING.md).

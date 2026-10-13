@@ -38,7 +38,7 @@ type Observation struct {
 	Invalidate       bool
 }
 
-// PollApply is one complete poll observation (§7 steps 3-4).
+// PollApply is one complete poll observation.
 type PollApply struct {
 	RepoID       int64
 	RepoRevision int64
@@ -81,7 +81,7 @@ type Work struct {
 	EnrichFailures int
 }
 
-// EnrichCommit is one accepted enrichment outcome (§7).
+// EnrichCommit is one accepted enrichment outcome.
 type EnrichCommit struct {
 	RepoID          int64
 	RepoRevision    int64
@@ -100,7 +100,7 @@ type EnrichCommit struct {
 	Caches          Caches
 }
 
-// DetailObservation commits a detail read whose fingerprint differs from the queued one (§4.3).
+// DetailObservation commits a detail read whose fingerprint differs from the queued one.
 type DetailObservation struct {
 	RepoID       int64
 	RepoRevision int64
@@ -247,7 +247,7 @@ func repoCurrent(ctx context.Context, tx *sql.Tx, repoID, revision int64) error 
 	return nil
 }
 
-// guardPR enforces the §7 commit conditions inside the write transaction.
+// guardPR enforces the commit conditions inside the write transaction.
 func guardPR(ctx context.Context, tx *sql.Tx, repoID, repoRevision int64, number int, prRevision int64) error {
 	var rRev, pRev int64
 	var enabled bool
@@ -341,7 +341,7 @@ ORDER BY retry_at, repo_id, number`
 }
 
 // CommitEnrichment writes an accepted enrichment outcome, its result, any
-// transition, and staged caches atomically, or returns ErrStale (§7).
+// transition, and staged caches atomically, or returns ErrStale.
 func (db *DB) CommitEnrichment(ctx context.Context, c EnrichCommit) (*Transition, error) {
 	var tr *Transition
 	err := db.inTx(ctx, func(tx *sql.Tx) error {

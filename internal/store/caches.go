@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Cache entries staged by collection and written with an accepted outcome (§4.3).
+// Cache entries staged by collection and written with an accepted outcome.
 type (
 	DiffCache struct {
 		BaseOID, ReviewedOID, HeadOID string
@@ -95,7 +95,7 @@ func cacheResult(v bool, err error) (bool, bool, error) {
 	return v, true, nil
 }
 
-// Purge deletes diff and comment cache rows older than 30 days (§6).
+// Purge deletes diff and comment cache rows older than 30 days.
 func (db *DB) Purge(ctx context.Context, now time.Time) (int64, error) {
 	cutoff := ms(now.Add(-cacheRetention))
 	var total int64

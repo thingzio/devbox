@@ -1,5 +1,5 @@
 // Package app wires devbox's components and runs the server with an orderly
-// shutdown (§3.3).
+// shutdown.
 package app
 
 import (

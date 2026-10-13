@@ -12,7 +12,7 @@ import (
 	"github.com/thingzio/devbox/internal/rules"
 )
 
-// Repo is a monitored repository owned by one account (§2 D4).
+// Repo is a monitored repository owned by one account.
 type Repo struct {
 	ID        int64
 	AccountID int64
@@ -119,7 +119,7 @@ func (db *DB) queryRepos(ctx context.Context, query string, args ...any) ([]Repo
 	return out, rows.Err()
 }
 
-// SetRepoEnabled toggles monitoring and advances the repo revision (§7).
+// SetRepoEnabled toggles monitoring and advances the repo revision.
 func (db *DB) SetRepoEnabled(ctx context.Context, id int64, enabled bool) (Repo, error) {
 	res, err := db.w.ExecContext(ctx, `UPDATE repos SET enabled = ?, revision = revision + 1 WHERE id = ?`, enabled, id)
 	if err != nil {
@@ -145,7 +145,7 @@ func (db *DB) DeleteRepo(ctx context.Context, id int64) error {
 
 // UpdateRepoRules stores new rules and advances the repo revision. When the
 // collection settings change, every open PR is invalidated and its result is
-// replaced by an unclassified refresh placeholder in the same transaction (§6).
+// replaced by an unclassified refresh placeholder in the same transaction.
 func (db *DB) UpdateRepoRules(ctx context.Context, id int64, rl rules.Rules, now time.Time) (RulesUpdate, error) {
 	var upd RulesUpdate
 	err := db.inTx(ctx, func(tx *sql.Tx) error {

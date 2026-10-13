@@ -1,4 +1,4 @@
-// Package logging configures devbox's structured logger (§10).
+// Package logging configures devbox's structured logger.
 package logging
 
 import (

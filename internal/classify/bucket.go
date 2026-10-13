@@ -2,7 +2,7 @@ package classify
 
 import "slices"
 
-// Bucket identifies the action group a PR belongs to (§5.1).
+// Bucket identifies the action group a PR belongs to.
 type Bucket string
 
 // Action buckets in precedence order, then non-action buckets.
@@ -59,7 +59,7 @@ func (b Bucket) Title() string {
 // IsAction reports whether the bucket means the maintainer owes an action.
 func (b Bucket) IsAction() bool { return slices.Contains(actionOrder, b) }
 
-// Settled reports whether transitions consumers treat the bucket as settled (§6).
+// Settled reports whether transitions consumers treat the bucket as settled.
 func (b Bucket) Settled() bool { return b != Unclassified }
 
 // Order is the bucket's display and ranking position.

@@ -18,7 +18,7 @@ type Result struct {
 	Notes        []string
 }
 
-// Classify derives the result for rec as seen by viewer at now (§5.2).
+// Classify derives the result for rec as seen by viewer at now.
 func Classify(rec Record, rl rules.Rules, viewer string, now time.Time) Result {
 	if rec.Error != "" {
 		return Result{Bucket: Unclassified, Reason: rec.Error, Action: "check the PR on GitHub"}

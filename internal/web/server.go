@@ -1,4 +1,4 @@
-// Package web serves the devbox UI (§9).
+// Package web serves the devbox UI.
 package web
 
 import (
@@ -119,7 +119,7 @@ func (s *Server) viewRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 }
 
-// secure applies §9.1: security headers, Host allow-listing, and same-origin POSTs.
+// secure applies the local-server rules: security headers, Host allow-listing, and same-origin POSTs.
 func (s *Server) secure(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -222,7 +222,7 @@ func (s *Server) serverError(w http.ResponseWriter, err error) {
 	http.Error(w, "internal error", http.StatusInternalServerError)
 }
 
-// githubURL returns u only when it is a https://github.com/ URL (§9.1).
+// githubURL returns u only when it is a https://github.com/ URL.
 func githubURL(u string) string {
 	if strings.HasPrefix(u, "https://github.com/") {
 		return u

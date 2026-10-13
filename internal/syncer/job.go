@@ -15,7 +15,7 @@ import (
 
 // DispatchDue starts enrichment for due work, at most one job per PR and
 // Workers per account. Paused accounts are left out of the query so their
-// backlog cannot crowd out other accounts' work (§7).
+// backlog cannot crowd out other accounts' work.
 func (e *Engine) DispatchDue(ctx context.Context) (int, error) {
 	works, err := e.d.Store.DueWork(ctx, e.now(), dispatchBatch, e.pausedAccounts())
 	if err != nil {
@@ -63,7 +63,7 @@ func (e *Engine) DispatchDue(ctx context.Context) (int, error) {
 	return started, nil
 }
 
-// RunJob performs one enrichment attempt and commits its outcome under the §7 guards.
+// RunJob performs one enrichment attempt and commits its outcome under the commit guards.
 func (e *Engine) RunJob(ctx context.Context, w store.Work) {
 	log := e.d.Log.With("repo", w.Owner+"/"+w.Name, "pr", w.Number)
 	src, err := e.d.Sources(w.Account)
@@ -121,7 +121,7 @@ func (e *Engine) RunJob(ctx context.Context, w store.Work) {
 }
 
 // usablePrior returns the stored record when it may stand in for a retryable
-// core failure: same version and collection hash, no error, collected within 30m (§7).
+// core failure: same version and collection hash, no error, collected within 30m.
 func (e *Engine) usablePrior(w store.Work, now time.Time) (classify.Record, bool) {
 	if len(w.Record) == 0 || w.RecordAt == nil || now.Sub(*w.RecordAt) > staleEvidenceLimit {
 		return classify.Record{}, false
@@ -173,7 +173,7 @@ func resultRow(r classify.Result) store.ResultRow {
 	return store.ResultRow{Bucket: string(r.Bucket), Reason: r.Reason, Action: r.Action, WaitingSince: r.WaitingSince, Also: r.Also, Notes: r.Notes}
 }
 
-// retryDelay is exponential from 30s, capped at 2m, with ±20% jitter (§7).
+// retryDelay is exponential from 30s, capped at 2m, with ±20% jitter.
 func (e *Engine) retryDelay(failures int) time.Duration {
 	d := retryBase
 	for i := 1; i < failures && d < retryCap; i++ {

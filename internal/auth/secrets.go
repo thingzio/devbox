@@ -1,5 +1,5 @@
 // Package auth handles GitHub account authentication: the OAuth device flow,
-// classic personal access tokens, and token storage in the OS keychain (§8).
+// classic personal access tokens, and token storage in the OS keychain.
 package auth
 
 import (
@@ -18,7 +18,7 @@ var DefaultClientID = ""
 // ClientIDEnv overrides DefaultClientID.
 const ClientIDEnv = "DEVBOX_GITHUB_CLIENT_ID"
 
-// Scopes requested by the device flow; repo also covers notifications (§8).
+// Scopes requested by the device flow; repo also covers notifications.
 const Scopes = "repo read:org"
 
 // ClientID returns the OAuth client ID in effect, or "" when none is configured.
