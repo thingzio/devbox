@@ -22,18 +22,27 @@ you and why, and serves a live queue in your browser.
 
 ## Install
 
-DevBox is a single binary for macOS, Linux, and Windows. Until the first
-release, build it from source with Go (see [CONTRIBUTING.md](CONTRIBUTING.md)):
+DevBox is a single binary for macOS, Linux, and Windows.
 
 ```bash
-git clone https://github.com/thingzio/devbox && cd devbox
-make build
+brew install thingzio/tap/devbox
 ```
+
+Or with Go:
+
+```bash
+go install github.com/thingzio/devbox/cmd/devbox@latest
+```
+
+Or download the archive for your platform from the
+[latest release](https://github.com/thingzio/devbox/releases/latest). Every
+release is signed and carries SLSA build provenance and an SBOM; its notes show
+how to verify them. To build from source, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Get started
 
 ```bash
-./bin/devbox serve
+devbox serve
 ```
 
 DevBox starts on http://127.0.0.1:8484 and opens it in your default browser.
