@@ -57,7 +57,7 @@ type Deps struct {
 	Hub     *hub.Hub
 	Metrics *metrics.Metrics
 	Log     *slog.Logger
-	Sources func(account string) (Source, error)
+	Sources func(ctx context.Context, account string) (Source, error)
 	Now     func() time.Time
 	Rand    func() float64 // [0, 1), for jitter
 }

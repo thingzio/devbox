@@ -11,7 +11,7 @@ import (
 	"github.com/zalando/go-keyring"
 )
 
-// DefaultClientID is the thingzio OAuth App's client ID. Device-flow client
+// DefaultClientID is the thingzio DevBox GitHub App's client ID. Device-flow client
 // IDs are public by design (no client secret is involved), so it ships in
 // source; -ldflags "-X github.com/thingzio/devbox/internal/auth.DefaultClientID=..."
 // replaces it in a custom build.
@@ -20,7 +20,8 @@ var DefaultClientID = "Ov23liw9A5EWYD03CV53"
 // ClientIDEnv overrides DefaultClientID.
 const ClientIDEnv = "DEVBOX_GITHUB_CLIENT_ID"
 
-// Scopes requested by the device flow; repo also covers notifications.
+// Scopes requested by the device flow. They apply only when the client ID is an
+// OAuth App; a GitHub App ignores them and grants its configured permissions.
 const Scopes = "repo read:org"
 
 // ClientID returns the OAuth client ID in effect, or "" when none is configured.

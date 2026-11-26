@@ -82,11 +82,12 @@ func effectivePolling(ctx context.Context, db *store.DB, def syncer.Polling, log
 	return p, "settings"
 }
 
-// accountToken reads an account's token. Only a missing token means the
-// account needs re-authentication; other failures are worth retrying.
-func accountToken(secrets auth.Secrets, account string) (string, error) {
-	token, err := secrets.Get(account)
-	if errors.Is(err, auth.ErrNoSecret) {
+// accountToken reads an account's token, renewing it when it expires. Only a
+// missing token or a rejected renewal means the account needs
+// re-authentication; other failures are worth retrying.
+func accountToken(ctx context.Context, tokens *auth.Tokens, account string) (string, error) {
+	token, err := tokens.Token(ctx, account)
+	if errors.Is(err, auth.ErrNoSecret) || errors.Is(err, auth.ErrRefreshRejected) {
 		return "", fmt.Errorf("%w: %w", syncer.ErrNoToken, err)
 	}
 	return token, err
@@ -133,6 +134,12 @@ func Run(ctx context.Context, cfg Config) error {
 		secrets = cfg.Secrets
 	}
 	secrets = auth.NewCachedSecrets(secrets)
+	device := &auth.DeviceClient{BaseURL: cfg.GitHubURL, ClientID: auth.ClientID()}
+	var refresher auth.Refresher
+	if device.ClientID != "" {
+		refresher = device
+	}
+	tokens := auth.NewTokens(secrets, refresher, nil)
 
 	var engine *syncer.Engine
 	newClient := func(token, account string) (*github.Client, error) {
@@ -146,8 +153,8 @@ func Run(ctx context.Context, cfg Config) error {
 			},
 		})
 	}
-	sources := func(account string) (syncer.Source, error) {
-		token, err := accountToken(secrets, account)
+	sources := func(ctx context.Context, account string) (syncer.Source, error) {
+		token, err := accountToken(ctx, tokens, account)
 		if err != nil {
 			return nil, err
 		}
@@ -170,7 +177,7 @@ func Run(ctx context.Context, cfg Config) error {
 	defer cancelMgr()
 	mgr := auth.NewManager(mgrCtx, auth.ManagerOptions{
 		Store: db, Secrets: secrets, Log: log,
-		Device:    &auth.DeviceClient{BaseURL: cfg.GitHubURL, ClientID: auth.ClientID()},
+		Device:    device,
 		NewClient: func(token string) (*github.Client, error) { return newClient(token, "") },
 	})
 	var accessToken string

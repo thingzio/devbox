@@ -131,7 +131,7 @@ func newEnv(t *testing.T, cfg Config) *env {
 	en := &env{t: t, ctx: ctx, db: db, hub: hub.New(), src: &fakeSource{collected: map[int]int{}}, clock: &testClock{now: t0}, repo: repo}
 	en.eng = New(cfg, Deps{
 		Store: db, Hub: en.hub, Metrics: metrics.New(prometheus.NewRegistry()),
-		Sources: func(string) (Source, error) {
+		Sources: func(context.Context, string) (Source, error) {
 			if en.srcErr != nil {
 				return nil, en.srcErr
 			}

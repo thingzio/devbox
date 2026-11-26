@@ -32,7 +32,7 @@ func (e *Engine) PollRepo(ctx context.Context, repoID int64) (int, error) {
 	}
 	log := e.d.Log.With("repo", repo.FullName(), "poll_id", rand.Text()[:8])
 	start := e.now()
-	src, err := e.d.Sources(repo.Account)
+	src, err := e.d.Sources(ctx, repo.Account)
 	if err != nil {
 		e.tokenUnavailable(ctx, repo.Account, err)
 		return e.recordPoll(ctx, log, repo, start, fmt.Errorf("account token: %w", err))

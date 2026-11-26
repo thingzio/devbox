@@ -65,7 +65,7 @@ func (e *Engine) DispatchDue(ctx context.Context) (int, error) {
 // RunJob performs one enrichment attempt and commits its outcome under the commit guards.
 func (e *Engine) RunJob(ctx context.Context, w store.Work) {
 	log := e.d.Log.With("repo", w.Owner+"/"+w.Name, "pr", w.Number)
-	src, err := e.d.Sources(w.Account)
+	src, err := e.d.Sources(ctx, w.Account)
 	if err != nil {
 		e.tokenUnavailable(ctx, w.Account, err)
 		e.enriched("deferred")

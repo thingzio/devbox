@@ -61,11 +61,14 @@ import.
 
 ## Accounts
 
-- **Sign in with GitHub** uses the device flow and requests `repo read:org`.
-  Organizations that restrict OAuth Apps need an owner's approval before DevBox
-  can read their private repositories.
+- **Sign in with GitHub** uses the device flow with the DevBox GitHub App,
+  whose permissions are read-only: GitHub itself prevents DevBox from writing.
+  Install the app on each organization or account whose repositories you
+  watch (an organization owner may need to approve it). Its tokens expire after
+  8 hours and DevBox renews them; if renewal fails, sign in again.
 - **Classic token**: a classic personal access token with the `repo` scope.
-  Fine-grained tokens are refused because they cannot read notifications.
+  Classic scopes cannot be read-only, so prefer signing in with GitHub.
+  Fine-grained tokens are not supported.
 
 You can add several accounts, for example personal and work. Each repository is
 watched by one of them, and the queue shows them all.

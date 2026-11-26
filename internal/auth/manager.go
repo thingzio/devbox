@@ -17,14 +17,16 @@ import (
 
 // Token validation errors.
 var (
-	ErrFineGrained  = errors.New("fine-grained tokens cannot read notifications; use a classic token with the repo scope")
+	ErrFineGrained  = errors.New("fine-grained tokens are not supported; sign in with GitHub, or use a classic token with the repo scope")
 	ErrMissingScope = errors.New("the token lacks the repo scope")
 )
 
-// Identity is a token's owner and granted scopes.
+// Identity is a token's owner and granted scopes. GitHub App user tokens
+// report no scopes: the app's permissions govern them instead.
 type Identity struct {
-	Login  string
-	Scopes []string
+	Login          string
+	Scopes         []string
+	ScopesReported bool
 }
 
 // Identify reads the token owner's login and the scopes GitHub reports.
@@ -45,7 +47,7 @@ func Identify(ctx context.Context, c *github.Client) (Identity, error) {
 			scopes = append(scopes, s)
 		}
 	}
-	return Identity{Login: u.Login, Scopes: scopes}, nil
+	return Identity{Login: u.Login, Scopes: scopes, ScopesReported: len(h.Values("X-OAuth-Scopes")) > 0}, nil
 }
 
 // ManagerOptions configures a Manager.
@@ -136,10 +138,10 @@ func (m *Manager) StartDevice(ctx context.Context) (FlowView, error) {
 	go func() {
 		defer m.wg.Done()
 		defer cancel()
-		token, err := m.o.Device.Wait(fctx, dc)
+		cred, err := m.o.Device.Wait(fctx, dc)
 		var acct store.Account
 		if err == nil {
-			acct, err = m.complete(fctx, token, "oauth")
+			acct, err = m.complete(fctx, cred, "oauth")
 		}
 		m.finish(f, acct.Login, err)
 	}()
@@ -176,11 +178,11 @@ func (m *Manager) AddPAT(ctx context.Context, token string) (store.Account, erro
 	case strings.HasPrefix(token, "github_pat_"):
 		return store.Account{}, ErrFineGrained
 	}
-	return m.complete(ctx, token, "pat")
+	return m.complete(ctx, Credential{AccessToken: token}, "pat")
 }
 
-func (m *Manager) complete(ctx context.Context, token, kind string) (store.Account, error) {
-	c, err := m.o.NewClient(token)
+func (m *Manager) complete(ctx context.Context, cred Credential, kind string) (store.Account, error) {
+	c, err := m.o.NewClient(cred.AccessToken)
 	if err != nil {
 		return store.Account{}, err
 	}
@@ -188,10 +190,10 @@ func (m *Manager) complete(ctx context.Context, token, kind string) (store.Accou
 	if err != nil {
 		return store.Account{}, fmt.Errorf("auth: verify token: %w", err)
 	}
-	if !slices.Contains(id.Scopes, "repo") {
+	if (kind == "pat" || id.ScopesReported) && !slices.Contains(id.Scopes, "repo") {
 		return store.Account{}, ErrMissingScope
 	}
-	if err := m.o.Secrets.Set(id.Login, token); err != nil {
+	if err := m.o.Secrets.Set(id.Login, cred.encode()); err != nil {
 		return store.Account{}, err
 	}
 	acct, err := m.o.Store.UpsertAccount(ctx, id.Login, kind, id.Scopes, m.o.Now())

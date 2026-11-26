@@ -194,7 +194,7 @@ func TestFailedWorkResumesAfterRestart(t *testing.T) {
 	})
 	en.observeAndEnrich(obs(1, "a"))
 	en.src.set(func(f *fakeSource) { f.outcome = nil })
-	restarted := New(Config{}, Deps{Store: en.db, Hub: en.hub, Sources: func(string) (Source, error) { return en.src, nil }, Now: en.clock.Now, Rand: func() float64 { return 0.5 }})
+	restarted := New(Config{}, Deps{Store: en.db, Hub: en.hub, Sources: func(context.Context, string) (Source, error) { return en.src, nil }, Now: en.clock.Now, Rand: func() float64 { return 0.5 }})
 	en.clock.Advance(time.Minute)
 	if _, err := restarted.DispatchDue(en.ctx); err != nil {
 		t.Fatal(err)

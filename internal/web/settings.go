@@ -189,7 +189,11 @@ func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
 		}
 	}
 	for _, a := range accounts {
-		v.Accounts = append(v.Accounts, accountView{Login: a.Login, Kind: a.Kind, Scopes: strings.Join(a.Scopes, ", "),
+		scopes := strings.Join(a.Scopes, ", ")
+		if scopes == "" && a.Kind == "oauth" {
+			scopes = "GitHub App permissions"
+		}
+		v.Accounts = append(v.Accounts, accountView{Login: a.Login, Kind: a.Kind, Scopes: scopes,
 			Status: a.Status, Detail: a.StatusDetail, PausedUntil: paused[a.Login], Rates: rates[a.Login], OK: a.Status == store.StatusOK})
 		v.AccountLogins = append(v.AccountLogins, a.Login)
 	}

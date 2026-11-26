@@ -243,6 +243,7 @@ func (brokenSecrets) Get(string) (string, error) {
 func TestAccountToken(t *testing.T) {
 	stored := auth.NewMemSecrets()
 	_ = stored.Set("me", "tok")
+	_ = stored.Set("expired", `{"access_token":"a","refresh_token":"r","expires_at":"2000-01-01T00:00:00Z"}`)
 	cases := []struct {
 		name      string
 		secrets   auth.Secrets
@@ -254,10 +255,11 @@ func TestAccountToken(t *testing.T) {
 		{name: "stored", secrets: stored, account: "me", want: "tok"},
 		{name: "missing needs re-authentication", secrets: stored, account: "other", noToken: true},
 		{name: "locked keychain is transient", secrets: brokenSecrets{}, account: "me", transient: true},
+		{name: "unrenewable grant needs re-authentication", secrets: stored, account: "expired", noToken: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := accountToken(tc.secrets, tc.account)
+			got, err := accountToken(context.Background(), auth.NewTokens(tc.secrets, nil, nil), tc.account)
 			if got != tc.want {
 				t.Fatalf("token = %q", got)
 			}

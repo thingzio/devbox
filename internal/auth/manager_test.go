@@ -14,6 +14,10 @@ import (
 	"github.com/thingzio/devbox/internal/store"
 )
 
+// noScopesHeader makes the fake API omit X-OAuth-Scopes, as GitHub does for
+// GitHub App user tokens, whose permissions come from the app.
+const noScopesHeader = "<none>"
+
 type managerEnv struct {
 	mgr     *Manager
 	db      *store.DB
@@ -32,7 +36,9 @@ func newManagerEnv(t *testing.T, scopes string, device *DeviceClient) *managerEn
 			fmt.Fprint(w, `{"message":"Bad credentials"}`)
 			return
 		}
-		w.Header().Set("X-OAuth-Scopes", scopes)
+		if scopes != noScopesHeader {
+			w.Header().Set("X-OAuth-Scopes", scopes)
+		}
 		fmt.Fprint(w, `{"login":"me"}`)
 	}))
 	t.Cleanup(api.Close)
@@ -153,5 +159,38 @@ func TestRemove(t *testing.T) {
 	}
 	if err := env.mgr.Remove(ctx, "me"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("second Remove err = %v", err)
+	}
+}
+
+func TestDeviceFlowStoresGitHubAppGrant(t *testing.T) {
+	ds := newDeviceServer(t, `{"access_token":"ghu_a","expires_in":28800,"refresh_token":"ghr_a","refresh_token_expires_in":15897600}`)
+	device := &DeviceClient{BaseURL: ds.server.URL, ClientID: "cid", Now: func() time.Time { return authNow },
+		Sleep: func(ctx context.Context, _ time.Duration) error { return ctx.Err() }}
+	env := newManagerEnv(t, noScopesHeader, device)
+	flow, err := env.mgr.StartDevice(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		view, _ := env.mgr.Flow(flow.ID)
+		if view.State == FlowDone {
+			break
+		}
+		if view.State == FlowFailed || time.Now().After(deadline) {
+			t.Fatalf("flow = %+v", view)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	raw, _ := env.secrets.Get("me")
+	if got := decodeCredential(raw); got.AccessToken != "ghu_a" || got.RefreshToken != "ghr_a" || !got.ExpiresAt.Equal(authNow.Add(8*time.Hour)) {
+		t.Fatalf("stored grant = %q", raw)
+	}
+}
+
+func TestOAuthTokenWithScopesStillNeedsRepo(t *testing.T) {
+	env := newManagerEnv(t, "read:org", nil)
+	if _, err := env.mgr.AddPAT(context.Background(), "ghp_x"); !errors.Is(err, ErrMissingScope) {
+		t.Fatalf("err = %v", err)
 	}
 }

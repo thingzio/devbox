@@ -116,7 +116,7 @@ func TestRepoActions(t *testing.T) {
 func TestAccountFlows(t *testing.T) {
 	ts := newTestServer(t)
 	code, body, _ := ts.post("/accounts/pat", url.Values{"token": {"github_pat_123"}})
-	if code != http.StatusUnprocessableEntity || !strings.Contains(body, "fine-grained tokens cannot read notifications") || strings.Contains(body, "github_pat_123") {
+	if code != http.StatusUnprocessableEntity || !strings.Contains(body, "fine-grained tokens are not supported") || strings.Contains(body, "github_pat_123") {
 		t.Fatalf("fine-grained = %d\n%s", code, body)
 	}
 	if code, _, _ := ts.post("/accounts/pat", url.Values{"token": {"ghp_ok"}}); code != http.StatusSeeOther {

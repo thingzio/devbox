@@ -60,13 +60,16 @@ The following are **not** vulnerabilities in DevBox:
 - anything that requires an attacker who can already run code as your user or
   read your keychain and home directory;
 - the content of pull requests, or the behavior of GitHub, its API, or an
-  organization's OAuth App policy, when DevBox reported it correctly; and
+  organization's app installation policy, when DevBox reported it correctly; and
 - what an agent does with a hand-off command you copy into it.
 
 ## Security posture
 
-- GitHub access is read-only. Classic tokens are validated for scope and
-  fine-grained tokens are refused; device-flow sign-in requests `repo read:org`.
+- GitHub access is read-only. Sign-in uses a GitHub App whose permissions are
+  all read-only, so GitHub enforces it; its user tokens expire after 8 hours
+  and are renewed with a single-use refresh token kept in the keychain. Classic
+  tokens are validated for the `repo` scope, which GitHub cannot narrow to
+  reads, so for them read-only is DevBox's own guarantee.
 - Tokens live in the OS keychain, never in the SQLite database, and are never
   logged, including authorization headers, device codes, pull request and
   comment bodies, and diffs.
