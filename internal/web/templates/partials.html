@@ -16,7 +16,7 @@
 
 {{define "pr-fields"}}<input type="hidden" name="repo_id" value="{{.RepoID}}"><input type="hidden" name="number" value="{{.Number}}"><input type="hidden" name="next" value="{{.Next}}">{{end}}
 
-{{define "row"}}<li class="item">
+{{define "row"}}<li class="item" data-nav data-key="{{.Repo}}#{{.Number}}@{{.Account}}" data-open="{{.URL}}" data-explain="{{.ExplainURL}}">
 <div class="item-main">
 <a class="item-title" href="{{.ExplainURL}}">{{.Title}}</a>
 <div class="item-sub">{{template "prlink" .}}{{if .Author}} · {{template "user" .Author}}{{end}} · {{.Age}}</div>
@@ -63,4 +63,5 @@
 </section>{{end}}
 </aside>
 </div>
+<p class="footnote keys">Keys: <kbd>j</kbd> / <kbd>k</kbd> move · <kbd>o</kbd> open on GitHub · <kbd>Enter</kbd> explain · <kbd>s</kbd> snooze · <kbd>Esc</kbd> clear</p>
 {{end}}

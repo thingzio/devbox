@@ -338,3 +338,18 @@ func TestStatusBarLinksSSOAuthorization(t *testing.T) {
 		})
 	}
 }
+
+func TestQueueRowsCarryKeyboardHooks(t *testing.T) {
+	ts := newTestServer(t)
+	r := ts.repo(ts.account("me"), "o", "r")
+	ts.seed(r, 1, "Navigate me", "https://github.com/o/r/pull/1", "needs_initial_review", `{}`)
+	ts.seed(r, 2, "Unsafe link", "javascript:alert(1)", "waiting_on_me", `{}`)
+	_, body := ts.get("/")
+	assertContains(t, "queue", body,
+		`<li class="item" data-nav data-key="o/r#1@me" data-open="https://github.com/o/r/pull/1" data-explain="/r/o/r/1">`,
+		`<li class="item" data-nav data-key="o/r#2@me" data-open="" data-explain="/r/o/r/2">`,
+		`<kbd>j</kbd>`, `<kbd>o</kbd>`)
+	if code, js := ts.get("/static/app.js"); code != http.StatusOK || !strings.Contains(js, "data-nav") {
+		t.Fatalf("app.js = %d, missing keyboard navigation", code)
+	}
+}

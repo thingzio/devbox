@@ -57,6 +57,9 @@ DevBox starts on http://127.0.0.1:8484 and opens it in your default browser.
 4. **Snooze** a pull request you cannot act on yet: for a day, three days, a
    week, or until it changes. It returns early if it moves to another bucket or
    gets new commits.
+5. **Use the keyboard**: <kbd>j</kbd> / <kbd>k</kbd> select a pull request,
+   <kbd>o</kbd> opens it on GitHub, <kbd>Enter</kbd> explains it, <kbd>s</kbd>
+   opens its snooze menu, and <kbd>Esc</kbd> clears the selection.
 
 If you use the maintainer-sweep skill, Settings offers its per-repository rule
 files (`~/.config/maintainer-sweep/repos/<owner>/<repo>.json`) for one-click
