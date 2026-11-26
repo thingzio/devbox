@@ -345,7 +345,7 @@ func TestCachesPurgeAndCascade(t *testing.T) {
 	if _, ok, _ := db.CachedTeam(ctx, "acme", "maintainers", "someone", at(30), time.Hour); ok {
 		t.Fatal("team cache hit for another login")
 	}
-	if n, err := db.Purge(ctx, at(1).Add(31*24*time.Hour)); err != nil || n != 3 {
+	if n, err := db.Purge(ctx, at(1).Add(31*24*time.Hour)); err != nil || n != 4 {
 		t.Fatalf("Purge = %d, %v", n, err)
 	}
 	if err := db.DeleteRepo(ctx, r.ID); err != nil {
@@ -381,5 +381,37 @@ func TestDueWorkIsFairAcrossAccountsAndSkipsPaused(t *testing.T) {
 	due, err = db.DueWork(ctx, at(2), 10, []string{"me"})
 	if err != nil || len(due) != 1 || due[0].Account != "work" || due[0].Number != 9 {
 		t.Fatalf("paused account not skipped: %+v, %v", due, err)
+	}
+}
+
+func TestPurgePrunesLongClosedPRs(t *testing.T) {
+	ctx := context.Background()
+	db := openTest(t)
+	r := mustRepo(t, db, mustAccount(t, db, "me"), "o", "r")
+	observeNew(t, db, r, at(0), 7, 8)
+	commitBucket(t, db, r, 7, "needs_initial_review", at(1))
+	commitBucket(t, db, r, 8, "needs_initial_review", at(1))
+	if _, err := db.ApplyPoll(ctx, PollApply{RepoID: r.ID, RepoRevision: r.Revision, Owner: "o", Name: "r", Now: at(2), Closes: []int{7}}); err != nil {
+		t.Fatal(err)
+	}
+	closedAt := at(2)
+	if n, err := db.Purge(ctx, closedAt.Add(ClosedRetention-time.Minute)); err != nil || n != 0 {
+		t.Fatalf("Purge inside retention = %d, %v", n, err)
+	}
+	if trs, _ := db.Transitions(ctx, r.ID, 7); len(trs) != 2 {
+		t.Fatalf("transitions inside retention = %+v", trs)
+	}
+	if n, err := db.Purge(ctx, closedAt.Add(ClosedRetention+time.Minute)); err != nil || n != 1 {
+		t.Fatalf("Purge after retention = %d, %v", n, err)
+	}
+	states, _ := db.PRStates(ctx, r.ID)
+	if len(states) != 1 || states[0].Number != 8 {
+		t.Fatalf("remaining PRs = %+v", states)
+	}
+	if trs, _ := db.Transitions(ctx, r.ID, 7); len(trs) != 0 {
+		t.Fatalf("pruned PR kept transitions: %+v", trs)
+	}
+	if trs, _ := db.Transitions(ctx, r.ID, 8); len(trs) != 1 {
+		t.Fatalf("open PR lost transitions: %+v", trs)
 	}
 }

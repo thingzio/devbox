@@ -95,6 +95,8 @@ devbox version
 - Tokens live in your OS keychain, never in the database, and are never logged.
 - The UI listens on loopback by default and rejects requests from other sites
   and unexpected host names.
+- Closed and merged pull requests, with their history, are removed from the
+  database 90 days after they close.
 
 Prometheus metrics are at `/metrics` and a health check at `/healthz`.
 

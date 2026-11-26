@@ -48,6 +48,7 @@ type Config struct {
 	DispatchEvery   time.Duration // default 1s
 	ReclassifyEvery time.Duration // default 5m
 	ResyncEvery     time.Duration // poller set reconciliation, default 30s
+	PurgeEvery      time.Duration // expired cache and closed-PR cleanup, default 24h
 }
 
 // Deps are the engine's collaborators.
@@ -109,6 +110,9 @@ func New(cfg Config, d Deps) *Engine {
 	}
 	if cfg.ResyncEvery <= 0 {
 		cfg.ResyncEvery = 30 * time.Second
+	}
+	if cfg.PurgeEvery <= 0 {
+		cfg.PurgeEvery = 24 * time.Hour
 	}
 	if d.Now == nil {
 		d.Now = time.Now

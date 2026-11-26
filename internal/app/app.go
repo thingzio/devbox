@@ -115,11 +115,6 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	defer db.Close()
-	if n, err := db.Purge(ctx, time.Now()); err != nil {
-		return err
-	} else if n > 0 {
-		log.Info("purged expired cache entries", "rows", n)
-	}
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.Addr)
 	if err != nil {
 		return fmt.Errorf("listen on %s: %w", cfg.Addr, err)

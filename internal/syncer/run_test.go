@@ -150,3 +150,46 @@ func TestPollDelayFollowsCurrentInterval(t *testing.T) {
 		t.Fatalf("backoff after one failure = %v, want 10m", d)
 	}
 }
+
+func TestRunPurgesOnStartAndPeriodically(t *testing.T) {
+	en := newEnv(t, Config{PollInterval: time.Hour, ReclassifyEvery: time.Hour, ResyncEvery: time.Hour, PurgeEvery: 20 * time.Millisecond})
+	en.src.set(func(f *fakeSource) { f.observed = []collect.Observed{obs(1, "a"), obs(2, "b")} })
+	en.mustPoll()
+	en.src.set(func(f *fakeSource) { f.observed = []collect.Observed{obs(2, "b")} })
+	en.mustPoll() // closes #1 at t0
+	if err := en.db.SetAccountStatus(en.ctx, "me", store.StatusNeedsAuth, "keep the poller idle"); err != nil {
+		t.Fatal(err)
+	}
+	en.clock.Advance(store.ClosedRetention + time.Hour)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- en.eng.Run(ctx) }()
+	remaining := func() int {
+		states, _ := en.db.PRStates(context.Background(), en.repo.ID)
+		return len(states)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for remaining() != 1 {
+		if time.Now().After(deadline) {
+			t.Fatalf("closed PR not purged on start: %d PRs", remaining())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	en.src.set(func(f *fakeSource) { f.observed = nil })
+	if _, err := en.db.UpsertAccount(en.ctx, "me", "oauth", []string{"repo"}, t0); err != nil {
+		t.Fatal(err)
+	}
+	en.mustPoll() // closes #2 at now
+	en.clock.Advance(store.ClosedRetention + time.Hour)
+	for remaining() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("closed PR not purged periodically: %d PRs", remaining())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}

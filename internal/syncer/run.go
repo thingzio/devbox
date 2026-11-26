@@ -9,8 +9,8 @@ import (
 	"github.com/thingzio/devbox/internal/store"
 )
 
-// Run starts a poller per enabled repository, the dispatcher, and the
-// reclassify ticker. It blocks until ctx is cancelled and every poller and
+// Run purges expired data, then starts a poller per enabled repository, the
+// dispatcher, and the reclassify and purge tickers. It blocks until ctx is cancelled and every poller and
 // enrichment job has stopped.
 func (e *Engine) Run(ctx context.Context) error {
 	pollers := map[int64]context.CancelFunc{}
@@ -51,7 +51,10 @@ func (e *Engine) Run(ctx context.Context) error {
 			}
 		}
 	}
+	e.purge(ctx)
 	reconcile(true)
+	purge := time.NewTicker(e.cfg.PurgeEvery)
+	defer purge.Stop()
 	dispatch := time.NewTicker(e.cfg.DispatchEvery)
 	defer dispatch.Stop()
 	reclassify := time.NewTicker(e.cfg.ReclassifyEvery)
@@ -75,11 +78,23 @@ func (e *Engine) Run(ctx context.Context) error {
 			e.dispatch(ctx)
 		case <-e.wake:
 			e.dispatch(ctx)
+		case <-purge.C:
+			e.purge(ctx)
 		case <-reclassify.C:
 			if err := e.Reclassify(ctx, 0); err != nil && ctx.Err() == nil {
 				e.d.Log.Error("reclassify", "err", err)
 			}
 		}
+	}
+}
+
+func (e *Engine) purge(ctx context.Context) {
+	n, err := e.d.Store.Purge(ctx, e.now())
+	switch {
+	case err != nil && ctx.Err() == nil:
+		e.d.Log.Error("purge expired data", "err", err)
+	case n > 0:
+		e.d.Log.Info("purged expired data", "rows", n)
 	}
 }
 

@@ -39,6 +39,10 @@ type (
 
 const cacheRetention = 30 * 24 * time.Hour
 
+// ClosedRetention is how long a closed or merged PR, with its transitions, is
+// kept after it closed.
+const ClosedRetention = 90 * 24 * time.Hour
+
 func writeCaches(ctx context.Context, tx *sql.Tx, repoID int64, c Caches, now time.Time) error {
 	for _, d := range c.Diffs {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO cache_diff (repo_id, base_oid, reviewed_oid, head_oid, changed, created_at)
@@ -116,16 +120,23 @@ func cacheResult(v bool, err error) (bool, bool, error) {
 	return v, true, nil
 }
 
-// Purge deletes diff, comment, and team cache rows older than 30 days.
+// Purge deletes cache rows older than 30 days, and PRs closed longer than
+// ClosedRetention together with their transitions. It returns the rows deleted
+// directly, not counting cascades.
 func (db *DB) Purge(ctx context.Context, now time.Time) (int64, error) {
-	cutoff := ms(now.Add(-cacheRetention))
+	cacheCutoff, closedCutoff := ms(now.Add(-cacheRetention)), ms(now.Add(-ClosedRetention))
 	var total int64
-	for _, q := range []string{
-		`DELETE FROM cache_diff WHERE created_at < ?`,
-		`DELETE FROM cache_comment WHERE created_at < ?`,
-		`DELETE FROM cache_team WHERE fetched_at < ?`,
+	for _, p := range []struct {
+		q      string
+		cutoff int64
+	}{
+		{`DELETE FROM cache_diff WHERE created_at < ?`, cacheCutoff},
+		{`DELETE FROM cache_comment WHERE created_at < ?`, cacheCutoff},
+		{`DELETE FROM cache_team WHERE fetched_at < ?`, cacheCutoff},
+		{`DELETE FROM cache_policy WHERE fetched_at < ?`, cacheCutoff},
+		{`DELETE FROM prs WHERE state = 'closed' AND closed_at < ?`, closedCutoff},
 	} {
-		res, err := db.w.ExecContext(ctx, q, cutoff)
+		res, err := db.w.ExecContext(ctx, p.q, p.cutoff)
 		if err != nil {
 			return total, fmt.Errorf("store: purge: %w", err)
 		}

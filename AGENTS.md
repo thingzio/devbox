@@ -102,7 +102,8 @@ failure, including ones that look pre-existing.
 - Every store write that commits enrichment checks the repository and pull
   request revisions inside the transaction; a stale writer gets `ErrStale` and
   drops its result. Never bypass the guard.
-- Transitions are append-only.
+- Transitions are append-only; they are deleted only with their pull request,
+  which the daily purge removes 90 days after it closed (`store.ClosedRetention`).
 - A rules change that alters the collection hash re-collects the repository; a
   `stale_days`-only change reclassifies without GitHub calls.
 - Rate limits pause an account rather than fail it; polls back off with a cap.
