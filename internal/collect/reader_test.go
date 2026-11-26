@@ -145,6 +145,35 @@ func TestChecksDecodesRunsAndStatuses(t *testing.T) {
 	}
 }
 
+func TestTeamMember(t *testing.T) {
+	reader := newReader(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/orgs/acme/teams/maintainers/memberships/me":
+			fmt.Fprint(w, `{"state":"active","role":"member"}`)
+		case "/orgs/acme/teams/invited/memberships/me":
+			fmt.Fprint(w, `{"state":"pending","role":"member"}`)
+		case "/orgs/acme/teams/other/memberships/me":
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"message":"Not Found"}`)
+		case "/orgs/acme/teams/secret/memberships/me":
+			w.WriteHeader(http.StatusForbidden)
+			fmt.Fprint(w, `{"message":"Resource not accessible by integration"}`)
+		default:
+			t.Errorf("unexpected request %s", r.URL)
+			w.WriteHeader(http.StatusTeapot)
+		}
+	})
+	ctx := context.Background()
+	for team, want := range map[string]bool{"maintainers": true, "invited": false, "other": false} {
+		if got, err := reader.TeamMember(ctx, "acme", team, "me"); err != nil || got != want {
+			t.Errorf("TeamMember(%s) = %v, %v; want %v", team, got, err, want)
+		}
+	}
+	if _, err := reader.TeamMember(ctx, "acme", "secret", "me"); err == nil {
+		t.Error("forbidden membership read succeeded")
+	}
+}
+
 func TestRESTReads(t *testing.T) {
 	var base string
 	reader := newReader(t, func(w http.ResponseWriter, r *http.Request) {

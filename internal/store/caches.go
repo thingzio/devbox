@@ -23,10 +23,17 @@ type (
 		BaseRef, Policy string
 		FetchedAt       time.Time
 	}
+	// TeamCache is whether a login belongs to an organization team.
+	TeamCache struct {
+		Org, Team, Login string
+		Member           bool
+		FetchedAt        time.Time
+	}
 	Caches struct {
 		Diffs    []DiffCache
 		Comments []CommentCache
 		Policies []PolicyCache
+		Teams    []TeamCache
 	}
 )
 
@@ -54,7 +61,21 @@ ON CONFLICT (repo_id, base_ref) DO UPDATE SET policy = excluded.policy, fetched_
 			return fmt.Errorf("store: cache policy: %w", err)
 		}
 	}
+	for _, t := range c.Teams {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO cache_team (org, team, login, member, fetched_at) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (org, team, login) DO UPDATE SET member = excluded.member, fetched_at = excluded.fetched_at`,
+			t.Org, t.Team, t.Login, t.Member, ms(t.FetchedAt)); err != nil {
+			return fmt.Errorf("store: cache team: %w", err)
+		}
+	}
 	return nil
+}
+
+// CachedTeam returns whether login belongs to org/team, if fetched within ttl.
+func (db *DB) CachedTeam(ctx context.Context, org, team, login string, now time.Time, ttl time.Duration) (member, ok bool, err error) {
+	err = db.r.QueryRowContext(ctx, `SELECT member FROM cache_team WHERE org = ? AND team = ? AND login = ? AND fetched_at >= ?`,
+		org, team, login, ms(now.Add(-ttl))).Scan(&member)
+	return cacheResult(member, err)
 }
 
 // CachedDiff returns a definite "effective diff changed" answer if cached.
@@ -95,11 +116,15 @@ func cacheResult(v bool, err error) (bool, bool, error) {
 	return v, true, nil
 }
 
-// Purge deletes diff and comment cache rows older than 30 days.
+// Purge deletes diff, comment, and team cache rows older than 30 days.
 func (db *DB) Purge(ctx context.Context, now time.Time) (int64, error) {
 	cutoff := ms(now.Add(-cacheRetention))
 	var total int64
-	for _, q := range []string{`DELETE FROM cache_diff WHERE created_at < ?`, `DELETE FROM cache_comment WHERE created_at < ?`} {
+	for _, q := range []string{
+		`DELETE FROM cache_diff WHERE created_at < ?`,
+		`DELETE FROM cache_comment WHERE created_at < ?`,
+		`DELETE FROM cache_team WHERE fetched_at < ?`,
+	} {
 		res, err := db.w.ExecContext(ctx, q, cutoff)
 		if err != nil {
 			return total, fmt.Errorf("store: purge: %w", err)

@@ -16,13 +16,17 @@ import (
 	"github.com/thingzio/devbox/internal/store"
 )
 
-const policyTTL = time.Hour
+const (
+	policyTTL = time.Hour
+	teamTTL   = time.Hour
+)
 
 // Cache is the read side of the evidence caches; *store.DB implements it.
 type Cache interface {
 	CachedDiff(ctx context.Context, repoID int64, base, reviewed, head string) (bool, bool, error)
 	CachedComment(ctx context.Context, repoID, commentID int64, updatedAt time.Time) (bool, bool, error)
 	CachedPolicy(ctx context.Context, repoID int64, baseRef string, now time.Time, ttl time.Duration) (string, bool, error)
+	CachedTeam(ctx context.Context, org, team, login string, now time.Time, ttl time.Duration) (bool, bool, error)
 }
 
 // Input identifies one enrichment attempt.
@@ -96,7 +100,7 @@ func (c *Collector) Collect(ctx context.Context, in Input) Outcome {
 		return failed(rec, err)
 	}
 	log.Debug("evidence collected", "evidence_errors", len(rec.EvidenceErrors),
-		"staged_caches", len(f.caches.Diffs)+len(f.caches.Comments)+len(f.caches.Policies))
+		"staged_caches", len(f.caches.Diffs)+len(f.caches.Comments)+len(f.caches.Policies)+len(f.caches.Teams))
 	return Outcome{Kind: Collected, Record: rec, Caches: f.caches, RetryableEvidence: f.retryable}
 }
 
@@ -135,8 +139,41 @@ func (f *followUp) run(ctx context.Context) error {
 		}
 		rec.Checks = checks
 	}
+	f.teamRequests(ctx)
 	rec.SignaturePolicy = f.signaturePolicy(ctx)
 	return nil
+}
+
+// teamRequests records requested reviewer teams the viewer belongs to. A
+// personal request already puts the PR on the viewer, so it needs no lookup.
+func (f *followUp) teamRequests(ctx context.Context) {
+	if f.rec.ReviewRequestedFromMe {
+		return
+	}
+	for _, rr := range f.d.ReviewRequests.Nodes {
+		if rr.RequestedReviewer == nil || rr.RequestedReviewer.Typename != "Team" {
+			continue
+		}
+		slug := rr.RequestedReviewer.CombinedSlug
+		org, team, ok := strings.Cut(slug, "/")
+		if !ok || org == "" || team == "" {
+			continue
+		}
+		member, ok, err := f.c.Cache.CachedTeam(ctx, org, team, f.in.Viewer, f.in.Now, teamTTL)
+		if err != nil {
+			f.log.Warn("team cache read failed", "err", err)
+		}
+		if err != nil || !ok {
+			if member, err = f.c.Reader.TeamMember(ctx, org, team, f.in.Viewer); err != nil {
+				f.evidence("team_review", fmt.Errorf("membership of @%s: %w", slug, err))
+				continue
+			}
+			f.caches.Teams = append(f.caches.Teams, store.TeamCache{Org: org, Team: team, Login: f.in.Viewer, Member: member, FetchedAt: f.in.Now})
+		}
+		if member {
+			f.rec.ReviewRequestedFromTeams = append(f.rec.ReviewRequestedFromTeams, slug)
+		}
+	}
 }
 
 func (f *followUp) evidence(field string, err error) {

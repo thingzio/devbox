@@ -64,6 +64,9 @@ func (noCache) CachedDiff(context.Context, int64, string, string, string) (bool,
 func (noCache) CachedComment(context.Context, int64, int64, time.Time) (bool, bool, error) {
 	return false, false, nil
 }
+func (noCache) CachedTeam(context.Context, string, string, string, time.Time, time.Duration) (bool, bool, error) {
+	return false, false, nil
+}
 func (noCache) CachedPolicy(context.Context, int64, string, time.Time, time.Duration) (string, bool, error) {
 	return "", false, nil
 }

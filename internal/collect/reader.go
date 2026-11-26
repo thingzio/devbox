@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -40,6 +41,7 @@ type Reader interface {
 	CommentBody(ctx context.Context, owner, name string, id int64) (string, error)
 	RulesetTypes(ctx context.Context, owner, name, branch string) ([]string, error)
 	ClassicSignatures(ctx context.Context, owner, name, branch string) (bool, error)
+	TeamMember(ctx context.Context, org, team, login string) (bool, error)
 }
 
 // GitHubReader implements Reader with the read-only GitHub client.
@@ -325,4 +327,22 @@ func (g GitHubReader) ClassicSignatures(ctx context.Context, owner, name, branch
 		return false, err
 	}
 	return out.Enabled, nil
+}
+
+// TeamMember reports whether login is an active member of org/team, including
+// through a child team; a pending invitation is not membership.
+func (g GitHubReader) TeamMember(ctx context.Context, org, team, login string) (bool, error) {
+	var out struct {
+		State string `json:"state"`
+	}
+	path := fmt.Sprintf("orgs/%s/teams/%s/memberships/%s", url.PathEscape(org), url.PathEscape(team), url.PathEscape(login))
+	_, err := g.Client.Get(ctx, path, &out)
+	var se *github.StatusError
+	if errors.As(err, &se) && se.Status == http.StatusNotFound {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return out.State == "active", nil
 }

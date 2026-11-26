@@ -6,7 +6,7 @@ import "time"
 
 // RecordVersion changes whenever Record's shape or normalization changes;
 // stored records with another version are re-collected.
-const RecordVersion = 1
+const RecordVersion = 2
 
 // Review is one of the viewer's submitted reviews; slices are chronological.
 type Review struct {
@@ -93,13 +93,15 @@ type Record struct {
 	AutoMerge      bool       `json:"auto_merge"`
 	ApprovedAt     *time.Time `json:"approved_at,omitempty"`
 
-	ReviewRequestedFromMe bool          `json:"review_requested_from_me"`
-	MyReviews             []Review      `json:"my_reviews,omitempty"`
-	OthersDecisive        []OtherReview `json:"others_decisive,omitempty"`
-	MyThreadsWaiting      []Thread      `json:"my_threads_waiting,omitempty"`
-	UnresolvedThreads     int           `json:"unresolved_threads"`
-	AuthorUpdatedAt       *time.Time    `json:"author_updated_at,omitempty"`
-	MyLastCommentAt       *time.Time    `json:"my_last_comment_at,omitempty"`
+	ReviewRequestedFromMe bool `json:"review_requested_from_me"`
+	// ReviewRequestedFromTeams lists requested teams ("org/team") the viewer belongs to.
+	ReviewRequestedFromTeams []string      `json:"review_requested_from_teams,omitempty"`
+	MyReviews                []Review      `json:"my_reviews,omitempty"`
+	OthersDecisive           []OtherReview `json:"others_decisive,omitempty"`
+	MyThreadsWaiting         []Thread      `json:"my_threads_waiting,omitempty"`
+	UnresolvedThreads        int           `json:"unresolved_threads"`
+	AuthorUpdatedAt          *time.Time    `json:"author_updated_at,omitempty"`
+	MyLastCommentAt          *time.Time    `json:"my_last_comment_at,omitempty"`
 
 	UnverifiedCommits  []Unverified `json:"unverified_commits,omitempty"`
 	SignaturesComplete bool         `json:"signatures_complete"`

@@ -127,14 +127,22 @@ func awaitingTestApproval(rec Record, ta rules.TestApproval) *Result {
 }
 
 func waitingOnMe(rec Record) *Result {
-	threads := rec.MyThreadsWaiting
-	if !rec.ReviewRequestedFromMe && len(threads) == 0 {
+	threads, teams := rec.MyThreadsWaiting, rec.ReviewRequestedFromTeams
+	if !rec.ReviewRequestedFromMe && len(teams) == 0 && len(threads) == 0 {
 		return nil
 	}
 	var parts []string
 	action := "reply in the linked threads"
-	if rec.ReviewRequestedFromMe {
+	switch {
+	case rec.ReviewRequestedFromMe:
 		parts = append(parts, "your review is requested")
+		action = "review"
+	case len(teams) > 0:
+		mentions := make([]string, len(teams))
+		for i, t := range teams {
+			mentions[i] = "@" + t
+		}
+		parts = append(parts, "review requested from "+strings.Join(mentions, ", "))
 		action = "review"
 	}
 	if len(threads) > 0 {

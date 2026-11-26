@@ -5,8 +5,9 @@ import "time"
 // GraphQL response shapes for PullRequestDetail.
 type (
 	Actor struct {
-		Login    string `json:"login"`
-		Typename string `json:"__typename,omitempty"`
+		Login        string `json:"login"`
+		Typename     string `json:"__typename,omitempty"`
+		CombinedSlug string `json:"combinedSlug,omitempty"` // teams only: "org/team"
 	}
 	Milestone struct {
 		Title string     `json:"title"`
@@ -124,7 +125,7 @@ const detailQuery = `query PullRequestDetail($owner: String!, $name: String!, $n
       author { login __typename }
       baseRefName baseRefOid headRefOid mergeStateStatus reviewDecision
       autoMergeRequest { enabledAt }
-      reviewRequests(first: 50) { nodes { requestedReviewer { __typename ... on User { login } } } }
+      reviewRequests(first: 50) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { combinedSlug } } } }
       myReviews: reviews(author: $viewer, last: 50) { nodes { state submittedAt commit { oid } } }
       latestOpinionatedReviews(first: 50) { nodes { state submittedAt author { login } } }
       reviewThreads(first: 100) { totalCount nodes { isResolved

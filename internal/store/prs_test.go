@@ -316,6 +316,7 @@ func TestCachesPurgeAndCascade(t *testing.T) {
 			Diffs:    []DiffCache{{BaseOID: "b", ReviewedOID: "r", HeadOID: "h", Changed: true}},
 			Comments: []CommentCache{{CommentID: 99, UpdatedAt: at(0), IsCommand: true}},
 			Policies: []PolicyCache{{BaseRef: "main", Policy: "required", FetchedAt: at(1)}},
+			Teams:    []TeamCache{{Org: "acme", Team: "maintainers", Login: "me", Member: true, FetchedAt: at(1)}},
 		}})
 	if err != nil {
 		t.Fatal(err)
@@ -335,7 +336,16 @@ func TestCachesPurgeAndCascade(t *testing.T) {
 	if _, ok, _ := db.CachedPolicy(ctx, r.ID, "main", at(62), time.Hour); ok {
 		t.Fatal("policy cache hit after TTL")
 	}
-	if n, err := db.Purge(ctx, at(1).Add(31*24*time.Hour)); err != nil || n != 2 {
+	if member, ok, _ := db.CachedTeam(ctx, "ACME", "maintainers", "me", at(30), time.Hour); !ok || !member {
+		t.Fatal("team cache miss inside TTL (org names are case-insensitive)")
+	}
+	if _, ok, _ := db.CachedTeam(ctx, "acme", "maintainers", "me", at(62), time.Hour); ok {
+		t.Fatal("team cache hit after TTL")
+	}
+	if _, ok, _ := db.CachedTeam(ctx, "acme", "maintainers", "someone", at(30), time.Hour); ok {
+		t.Fatal("team cache hit for another login")
+	}
+	if n, err := db.Purge(ctx, at(1).Add(31*24*time.Hour)); err != nil || n != 3 {
 		t.Fatalf("Purge = %d, %v", n, err)
 	}
 	if err := db.DeleteRepo(ctx, r.ID); err != nil {

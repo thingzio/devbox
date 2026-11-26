@@ -3,6 +3,7 @@ package collect
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -29,6 +30,8 @@ type fakeReader struct {
 	classicErr  error
 	checks      []classify.Check
 	checksErr   error
+	members     map[string]bool
+	memberErr   error
 	calls       map[string]int
 }
 
@@ -78,6 +81,10 @@ func (f *fakeReader) RulesetTypes(context.Context, string, string, string) ([]st
 	f.count("RulesetTypes")
 	return f.rulesets, f.rulesetErr
 }
+func (f *fakeReader) TeamMember(_ context.Context, org, team, _ string) (bool, error) {
+	f.count("TeamMember")
+	return f.members[org+"/"+team], f.memberErr
+}
 func (f *fakeReader) ClassicSignatures(context.Context, string, string, string) (bool, error) {
 	f.count("ClassicSignatures")
 	return f.classic, f.classicErr
@@ -87,6 +94,7 @@ type fakeCache struct {
 	diffs    map[string]bool
 	comments map[int64]bool
 	policy   string
+	teams    map[string]bool
 }
 
 func (c *fakeCache) CachedDiff(_ context.Context, _ int64, base, reviewed, head string) (bool, bool, error) {
@@ -95,6 +103,10 @@ func (c *fakeCache) CachedDiff(_ context.Context, _ int64, base, reviewed, head 
 }
 func (c *fakeCache) CachedComment(_ context.Context, _, id int64, _ time.Time) (bool, bool, error) {
 	v, ok := c.comments[id]
+	return v, ok, nil
+}
+func (c *fakeCache) CachedTeam(_ context.Context, org, team, _ string, _ time.Time, _ time.Duration) (bool, bool, error) {
+	v, ok := c.teams[org+"/"+team]
 	return v, ok, nil
 }
 func (c *fakeCache) CachedPolicy(context.Context, int64, string, time.Time, time.Duration) (string, bool, error) {
@@ -350,6 +362,54 @@ func TestCollectSignaturePolicy(t *testing.T) {
 			}
 			if tc.evidence && rec.EvidenceErrors[0].Retryable != tc.retryable {
 				t.Fatalf("retryable = %v", rec.EvidenceErrors[0].Retryable)
+			}
+		})
+	}
+}
+
+func TestCollectTeamReviewRequests(t *testing.T) {
+	team := func(slug string) ReviewRequest {
+		return ReviewRequest{RequestedReviewer: &Actor{Typename: "Team", CombinedSlug: slug}}
+	}
+	cases := []struct {
+		name     string
+		requests []ReviewRequest
+		reader   fakeReader
+		cache    map[string]bool
+		want     []string
+		lookups  int
+		staged   int
+		evidence bool
+	}{
+		{name: "member of one requested team", requests: []ReviewRequest{team("acme/maintainers"), team("acme/docs")},
+			reader: fakeReader{members: map[string]bool{"acme/maintainers": true}}, want: []string{"acme/maintainers"}, lookups: 2, staged: 2},
+		{name: "cached membership needs no read", requests: []ReviewRequest{team("acme/maintainers")},
+			cache: map[string]bool{"acme/maintainers": true}, want: []string{"acme/maintainers"}},
+		{name: "personal request skips team lookups", requests: []ReviewRequest{{RequestedReviewer: &Actor{Login: "me"}}, team("acme/maintainers")}},
+		{name: "unreadable membership is optional evidence", requests: []ReviewRequest{team("acme/maintainers")},
+			reader: fakeReader{memberErr: &github.StatusError{Status: 403, Message: "Resource not accessible"}}, lookups: 1, evidence: true},
+		{name: "malformed slug is ignored", requests: []ReviewRequest{team("no-slash")}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := baseDetail()
+			d.ReviewRequests.Nodes = tc.requests
+			r := tc.reader
+			r.detail = d
+			out := collect(&r, &fakeCache{teams: tc.cache}, inputFor(d, rules.Default()))
+			if out.Kind != Collected {
+				t.Fatalf("outcome = %+v", out)
+			}
+			rec := out.Record
+			if !slices.Equal(rec.ReviewRequestedFromTeams, tc.want) {
+				t.Fatalf("teams = %v, want %v", rec.ReviewRequestedFromTeams, tc.want)
+			}
+			if r.calls["TeamMember"] != tc.lookups || len(out.Caches.Teams) != tc.staged {
+				t.Fatalf("lookups = %d staged = %d", r.calls["TeamMember"], len(out.Caches.Teams))
+			}
+			gotEvidence := slices.ContainsFunc(rec.EvidenceErrors, func(e classify.EvidenceError) bool { return e.Field == "team_review" })
+			if gotEvidence != tc.evidence {
+				t.Fatalf("evidence errors = %+v", rec.EvidenceErrors)
 			}
 		})
 	}

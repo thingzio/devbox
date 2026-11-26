@@ -99,6 +99,13 @@ func TestClassify(t *testing.T) {
 		}, bucket: WaitingOnMe, reason: "your review is requested; author replied in your threads (2)", action: "review",
 			since: ptr(hours(5)), also: []string{"Needs initial review"}, checkAlso: true,
 			notes: []string{"https://github.com/o/r/pull/7#c1", "https://github.com/o/r/pull/7#c2"}},
+		{name: "review requested from my teams", mod: func(r *Record) {
+			r.ReviewRequestedFromTeams = []string{"acme/maintainers", "acme/reviewers"}
+		}, bucket: WaitingOnMe, reason: "review requested from @acme/maintainers, @acme/reviewers", action: "review"},
+		{name: "personal request outranks team request", mod: func(r *Record) {
+			r.ReviewRequestedFromMe = true
+			r.ReviewRequestedFromTeams = []string{"acme/maintainers"}
+		}, bucket: WaitingOnMe, reason: "your review is requested", action: "review"},
 		{name: "replies only", mod: func(r *Record) {
 			r.MyReviews = []Review{review("COMMENTED", hours(1.5), "head111aaaa")}
 			r.MyLastCommentAt = ptr(hours(1.5))

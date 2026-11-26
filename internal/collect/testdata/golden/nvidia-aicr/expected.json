@@ -1,7 +1,7 @@
 {
   "kind": 1,
   "record": {
-    "version": 1,
+    "version": 2,
     "collection_rules_hash": "c49368c0df159776685de16feb40d78f6a9aab324039078ee35fd768f30ded8a",
     "number": 3203,
     "title": "fix(upgrade): count and name unplaced Argo Applications",
