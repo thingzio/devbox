@@ -60,6 +60,12 @@ DevBox starts on http://127.0.0.1:8484 and opens it in your default browser.
 5. **Use the keyboard**: <kbd>j</kbd> / <kbd>k</kbd> select a pull request,
    <kbd>o</kbd> opens it on GitHub, <kbd>Enter</kbd> explains it, <kbd>s</kbd>
    opens its snooze menu, and <kbd>Esc</kbd> clears the selection.
+6. **Get notified** (macOS): turn on desktop notifications in Settings →
+   Notifications to hear when a pull request becomes new work for you. They
+   are off by default, arrive as one notification per burst, and skip Bot PRs.
+   macOS shows them as coming from Script Editor, so allow Script Editor in
+   System Settings → Notifications; clicking one opens Script Editor, not the
+   pull request.
 
 If you use the maintainer-sweep skill, Settings offers its per-repository rule
 files (`~/.config/maintainer-sweep/repos/<owner>/<repo>.json`) for one-click
@@ -112,6 +118,8 @@ devbox version
   and unexpected host names.
 - Closed and merged pull requests, with their history, are removed from the
   database 90 days after they close.
+- Desktop notifications, when you turn them on, include pull request titles;
+  macOS may show them on the lock screen depending on your preview settings.
 
 Prometheus metrics are at `/metrics` and a health check at `/healthz`.
 

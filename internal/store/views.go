@@ -199,3 +199,17 @@ WHERE r.enabled = 1 AND p.state = 'open' GROUP BY 1, 2 ORDER BY 1, 2`)
 	}
 	return out, rows.Err()
 }
+
+// PRSummary names an open PR for a notification: its repository and title.
+func (db *DB) PRSummary(ctx context.Context, repoID int64, number int) (string, string, error) {
+	var owner, name, title string
+	err := db.r.QueryRowContext(ctx, `SELECT r.owner, r.name, p.title FROM prs p JOIN repos r ON r.id = p.repo_id
+WHERE p.repo_id = ? AND p.number = ? AND p.state = 'open'`, repoID, number).Scan(&owner, &name, &title)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", ErrNotFound
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("store: pr summary: %w", err)
+	}
+	return owner + "/" + name, title, nil
+}

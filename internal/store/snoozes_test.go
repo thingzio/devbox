@@ -115,3 +115,23 @@ func TestPurgeDropsEndedSnoozes(t *testing.T) {
 		}
 	}
 }
+
+func TestPRSummary(t *testing.T) {
+	ctx := context.Background()
+	db := openTest(t)
+	r := mustRepo(t, db, mustAccount(t, db, "me"), "o", "r")
+	observeNew(t, db, r, at(0), 7)
+	commitBucket(t, db, r, 7, "waiting_on_me", at(1))
+	if repo, title, err := db.PRSummary(ctx, r.ID, 7); err != nil || repo != "o/r" || title != "Fix it" {
+		t.Fatalf("PRSummary = %q %q %v", repo, title, err)
+	}
+	if _, _, err := db.PRSummary(ctx, r.ID, 99); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing PR err = %v", err)
+	}
+	if _, err := db.ApplyPoll(ctx, PollApply{RepoID: r.ID, RepoRevision: r.Revision, Owner: "o", Name: "r", Now: at(2), Closes: []int{7}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.PRSummary(ctx, r.ID, 7); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("closed PR err = %v", err)
+	}
+}

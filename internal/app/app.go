@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -22,6 +23,7 @@ import (
 	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/metrics"
+	"github.com/thingzio/devbox/internal/notify"
 	"github.com/thingzio/devbox/internal/store"
 	"github.com/thingzio/devbox/internal/syncer"
 	"github.com/thingzio/devbox/internal/version"
@@ -39,6 +41,7 @@ type Config struct {
 	ImportDir    string
 	Logger       *slog.Logger
 	Secrets      auth.Secrets      // nil uses the OS keychain
+	Desktop      notify.Sender     // nil uses the platform's notifications (macOS only)
 	Ready        func(addr string) // called with the bound address once serving
 	Notice       io.Writer         // receives the access URL under AllowRemote; never the log
 	EngineConfig syncer.Config     // zero values take engine defaults; polling is overridden
@@ -170,7 +173,21 @@ func Run(ctx context.Context, cfg Config) error {
 	if polling.Manual {
 		ecfg.PollInterval = syncer.DefaultPollInterval
 	}
-	engine = syncer.New(ecfg, syncer.Deps{Store: db, Hub: h, Metrics: m, Log: log, Sources: sources})
+	desktop := cfg.Desktop
+	if desktop == nil {
+		desktop = notify.Native(runtime.GOOS)
+	}
+	deps := syncer.Deps{Store: db, Hub: h, Metrics: m, Log: log, Sources: sources}
+	var notifier *notify.Notifier
+	var testNotification func(context.Context) error
+	if desktop != nil {
+		notifier = notify.New(notify.Options{Store: db, Send: desktop, Log: log})
+		deps.OnTransition = notifier.Transition
+		testNotification = func(ctx context.Context) error {
+			return desktop(ctx, notify.Message{Title: "DevBox", Subtitle: "Test notification", Body: "Desktop notifications are working."})
+		}
+	}
+	engine = syncer.New(ecfg, deps)
 	metrics.RegisterStateGauges(reg, func() int { return len(engine.Pauses()) }, h.Subscribers)
 
 	mgrCtx, cancelMgr := context.WithCancel(context.Background())
@@ -187,6 +204,7 @@ func Run(ctx context.Context, cfg Config) error {
 	srv, err := web.New(web.Options{
 		Store: db, Hub: h, Auth: mgr, Engine: engine, Metrics: promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
 		Log: log, Addr: ln.Addr().String(), AllowRemote: cfg.AllowRemote, AccessToken: accessToken, DefaultPolling: cfg.Polling, ImportDir: cfg.ImportDir,
+		TestNotification: testNotification,
 	})
 	if err != nil {
 		_ = ln.Close()
@@ -207,6 +225,13 @@ func Run(ctx context.Context, cfg Config) error {
 	defer cancelEngine()
 	engineDone := make(chan error, 1)
 	go func() { engineDone <- engine.Run(engineCtx) }()
+	notifierDone := make(chan struct{})
+	go func() {
+		defer close(notifierDone)
+		if notifier != nil {
+			notifier.Run(engineCtx)
+		}
+	}()
 	serveDone := make(chan error, 1)
 	go func() { serveDone <- httpSrv.Serve(ln) }()
 
@@ -237,6 +262,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	cancelShutdown()
 	cancelEngine()
+	<-notifierDone
 	if err := <-engineDone; err != nil {
 		log.Warn("engine stopped with error", "err", err)
 	}

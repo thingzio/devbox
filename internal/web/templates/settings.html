@@ -2,7 +2,7 @@
 <div class="page-head"><div><h1 class="page-title">Settings</h1><p class="sub">Connect GitHub accounts, choose repositories, and set how often DevBox checks them.</p></div></div>
 {{if .Error}}<p class="msg err" role="alert">{{.Error}}</p>{{end}}
 <div class="settings-grid">
-<nav class="section-nav" aria-label="Settings sections"><a href="#accounts">Accounts</a><a href="#repos">Repositories</a>{{if .Imports}}<a href="#import">Import</a>{{end}}<a href="#polling">Polling</a></nav>
+<nav class="section-nav" aria-label="Settings sections"><a href="#accounts">Accounts</a><a href="#repos">Repositories</a>{{if .Imports}}<a href="#import">Import</a>{{end}}<a href="#polling">Polling</a><a href="#notifications">Notifications</a></nav>
 <div class="settings-main">
 
 <section id="accounts" class="card"><div class="card-head"><h2>Accounts</h2><span class="muted small">{{len .Accounts}} connected</span></div>
@@ -45,6 +45,13 @@
 <section id="polling" class="card"><div class="card-head"><h2>Polling</h2></div>
 <form method="post" action="/settings/polling" class="row"><label class="field"><span class="field-cap">Check repositories</span><select name="polling">{{range .PollingOptions}}<option value="{{.Value}}"{{if .Selected}} selected{{end}}>{{.Label}}</option>{{end}}</select></label><button class="btn" type="submit">Save</button></form>
 <p class="muted small">{{if .PollingManual}}Manual: repositories are checked only when you press Refresh (newly added repositories are checked once).{{else}}Checking every {{.PollingNow}}.{{end}} Default comes from <code>--poll-interval</code>; a choice saved here overrides it.</p>
+</section>
+
+<section id="notifications" class="card"><div class="card-head"><h2>Notifications</h2></div>
+{{if .NotifyAvailable}}<form method="post" action="/settings/notifications" class="row"><label class="field"><span class="field-cap">Desktop notifications</span><select name="enabled"><option value="off"{{if not .NotifyOn}} selected{{end}}>Off</option><option value="on"{{if .NotifyOn}} selected{{end}}>On</option></select></label><button class="btn" type="submit">Save</button></form>
+<form method="post" action="/settings/notifications/test" class="row"><button class="btn secondary" type="submit">Send a test notification</button></form>
+<p class="muted small">When on, DevBox notifies you when a pull request becomes new work for you: it enters an action bucket other than Bot PRs. Several at once arrive as one notification. macOS shows them as coming from Script Editor; allow them in System Settings → Notifications.</p>
+{{else}}<p class="muted small">Desktop notifications are available on macOS.</p>{{end}}
 </section>
 
 </div>

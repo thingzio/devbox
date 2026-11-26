@@ -521,3 +521,18 @@ func TestTransitionLogsNameThePROnce(t *testing.T) {
 		t.Fatalf("transition lines = %d, want 2 (enrichment and close):\n%s", lines, buf.String())
 	}
 }
+
+func TestTransitionsReachTheObserver(t *testing.T) {
+	en := newEnv(t, Config{})
+	var got []string
+	en.eng.d.OnTransition = func(repoID int64, number int, tr store.Transition) {
+		got = append(got, fmt.Sprintf("%d#%d→%s", repoID, number, tr.To))
+	}
+	en.observeAndEnrich(obs(1, "a"))
+	en.src.set(func(f *fakeSource) { f.observed = nil })
+	en.mustPoll()
+	want := []string{fmt.Sprintf("%d#1→needs_initial_review", en.repo.ID), fmt.Sprintf("%d#1→closed", en.repo.ID)}
+	if !slices.Equal(got, want) {
+		t.Fatalf("observed %v, want %v", got, want)
+	}
+}

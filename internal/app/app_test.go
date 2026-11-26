@@ -20,6 +20,7 @@ import (
 
 	"github.com/thingzio/devbox/internal/auth"
 	"github.com/thingzio/devbox/internal/github"
+	"github.com/thingzio/devbox/internal/notify"
 	"github.com/thingzio/devbox/internal/store"
 	"github.com/thingzio/devbox/internal/syncer"
 )
@@ -336,5 +337,47 @@ func TestRunRemoteRequiresTheStartupToken(t *testing.T) {
 	}
 	if strings.Contains(logs.String(), token) {
 		t.Fatal("access token written to the log")
+	}
+}
+
+func TestRunWiresDesktopNotifications(t *testing.T) {
+	cfg := baseConfig(t)
+	sent := make(chan notify.Message, 1)
+	cfg.Desktop = func(_ context.Context, m notify.Message) error { sent <- m; return nil }
+	ready := make(chan string, 1)
+	cfg.Ready = func(addr string) { ready <- addr }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, cfg) }()
+	var addr string
+	select {
+	case addr = <-ready:
+	case err := <-done:
+		t.Fatalf("Run exited: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("not ready")
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://"+addr+"/settings/notifications/test", nil)
+	req.Header.Set("Origin", "http://"+addr)
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("test notification = %d", resp.StatusCode)
+	}
+	select {
+	case m := <-sent:
+		if m.Title == "" {
+			t.Fatalf("empty test notification: %+v", m)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("test notification never reached the desktop sender")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
 	}
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/thingzio/devbox/internal/auth"
 	"github.com/thingzio/devbox/internal/hub"
+	"github.com/thingzio/devbox/internal/notify"
 	"github.com/thingzio/devbox/internal/rules"
 	"github.com/thingzio/devbox/internal/store"
 	"github.com/thingzio/devbox/internal/syncer"
@@ -29,6 +30,45 @@ func (s *Server) settingsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /repos/{id}/{action}", s.handleRepoAction)
 	mux.HandleFunc("POST /import", s.handleImport)
 	mux.HandleFunc("POST /settings/polling", s.handlePolling)
+	mux.HandleFunc("POST /settings/notifications", s.handleNotifications)
+	mux.HandleFunc("POST /settings/notifications/test", s.handleTestNotification)
+}
+
+// handleNotifications turns desktop notifications on or off; off removes the
+// saved choice, so the default (off) applies.
+func (s *Server) handleNotifications(w http.ResponseWriter, r *http.Request) {
+	if s.o.TestNotification == nil {
+		http.NotFound(w, r)
+		return
+	}
+	var err error
+	switch choice := r.PostFormValue("enabled"); choice {
+	case "on":
+		err = s.o.Store.SetSetting(r.Context(), notify.SettingKey, "on", s.o.Now())
+	case "off":
+		err = s.o.Store.DeleteSetting(r.Context(), notify.SettingKey)
+	default:
+		s.reject(w, r, fmt.Errorf("notifications must be on or off, not %q", choice))
+		return
+	}
+	if err != nil {
+		s.serverError(w, err)
+		return
+	}
+	s.o.Log.Info("notification setting saved", "enabled", r.PostFormValue("enabled"))
+	s.backToSettings(w, r)
+}
+
+func (s *Server) handleTestNotification(w http.ResponseWriter, r *http.Request) {
+	if s.o.TestNotification == nil {
+		http.NotFound(w, r)
+		return
+	}
+	if err := s.o.TestNotification(r.Context()); err != nil {
+		s.reject(w, r, fmt.Errorf("test notification failed: %w; allow notifications for Script Editor in System Settings → Notifications", err))
+		return
+	}
+	s.backToSettings(w, r)
 }
 
 type pollingOption struct {
@@ -176,6 +216,8 @@ type settingsView struct {
 	PollingNow         string
 	PollingManual      bool
 	ClientIDConfigured bool
+	NotifyAvailable    bool
+	NotifyOn           bool
 }
 
 func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
@@ -184,6 +226,12 @@ func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
 		return v, err
 	}
 	v.ClientIDConfigured = s.o.Auth != nil && s.o.Auth.DeviceConfigured()
+	v.NotifyAvailable = s.o.TestNotification != nil
+	on, _, err := s.o.Store.Setting(ctx, notify.SettingKey)
+	if err != nil {
+		return v, err
+	}
+	v.NotifyOn = on == "on"
 	accounts, err := s.o.Store.Accounts(ctx)
 	if err != nil {
 		return v, err

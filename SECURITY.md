@@ -48,6 +48,8 @@ The following are in scope for a report:
 - a redirect from DevBox to a location outside it;
 - with `--allow-remote`, reaching any page other than `/healthz` without the
   access token printed at startup;
+- pull request text that runs as AppleScript or as an `osascript` option
+  through a desktop notification;
 - any write to GitHub, or a request to a host other than GitHub's API and
   sign-in endpoints; and
 - resource exhaustion from GitHub data that bounded reads should have limited.

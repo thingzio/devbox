@@ -60,6 +60,8 @@ type Deps struct {
 	Sources func(ctx context.Context, account string) (Source, error)
 	Now     func() time.Time
 	Rand    func() float64 // [0, 1), for jitter
+	// OnTransition, when set, sees every committed bucket change; it must not block.
+	OnTransition func(repoID int64, number int, tr store.Transition)
 }
 
 const (
@@ -388,6 +390,9 @@ func (e *Engine) published(log *slog.Logger, repoID int64, number int, tr *store
 		}
 		log.Info("bucket transition", "from", from, "to", tr.To, "reason", tr.Reason)
 		e.d.Metrics.Transitions.WithLabelValues(tr.To).Inc()
+		if e.d.OnTransition != nil {
+			e.d.OnTransition(repoID, number, *tr)
+		}
 	}
 	e.d.Hub.Publish(hub.Event{RepoID: repoID, Number: number})
 }

@@ -53,8 +53,11 @@ type Options struct {
 	AccessToken    string         // required with AllowRemote: the secret in the startup URL
 	DefaultPolling syncer.Polling // from --poll-interval; a saved UI choice overrides it
 	ImportDir      string
-	Now            func() time.Time
-	Location       *time.Location // display time zone, default time.Local
+	// TestNotification sends a sample desktop notification; nil where the
+	// platform has none, which also hides the setting.
+	TestNotification func(ctx context.Context) error
+	Now              func() time.Time
+	Location         *time.Location // display time zone, default time.Local
 }
 
 // Server renders pages and handles UI actions.
