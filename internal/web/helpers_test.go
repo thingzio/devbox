@@ -105,6 +105,11 @@ type testServer struct {
 
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
+	return newTestServerWith(t, nil)
+}
+
+func newTestServerWith(t *testing.T, configure func(*Options)) *testServer {
+	t.Helper()
 	ts := &testServer{t: t, ctx: context.Background(), hub: hub.New(), engine: &fakeEngine{polling: syncer.DefaultPolling()}, secrets: auth.NewMemSecrets(),
 		now: t0, importDir: t.TempDir(), apiScopes: "repo, read:org"}
 	db, err := store.Open(ts.ctx, filepath.Join(t.TempDir(), "d.db"), nil)
@@ -137,11 +142,15 @@ func newTestServer(t *testing.T) *testServer {
 	})
 	t.Cleanup(mgr.Close)
 	ts.http = httptest.NewUnstartedServer(nil)
-	s, err := New(Options{
+	opts := Options{
 		Store: db, Hub: ts.hub, Auth: mgr, Engine: ts.engine, Metrics: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "devbox_up 1\n") }),
 		Addr: ts.http.Listener.Addr().String(), DefaultPolling: syncer.DefaultPolling(), ImportDir: ts.importDir,
 		Now: ts.clock, Location: time.UTC,
-	})
+	}
+	if configure != nil {
+		configure(&opts)
+	}
+	s, err := New(opts)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

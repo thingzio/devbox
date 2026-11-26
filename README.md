@@ -86,7 +86,7 @@ devbox version
 | `--no-browser` | off | Don't open the queue in the default browser on start; the URL is logged either way. |
 | `--debug` | off | Log every GitHub request (never tokens, bodies, or diffs). |
 | `--log-format` | `auto` | `text`, `json`, or `auto` (text on a terminal, JSON otherwise). |
-| `--allow-remote` | off | Accept connections from other machines. The UI has no login, so only use this on a trusted network. |
+| `--allow-remote` | off | Accept connections from other machines. DevBox prints a URL with a one-time access token at startup; open it once to get a session cookie, which lasts until DevBox restarts. Traffic is plain HTTP, so use TLS (an SSH tunnel or a proxy) on networks you do not trust. |
 
 ## Privacy and security
 

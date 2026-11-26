@@ -4,8 +4,10 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -38,6 +40,7 @@ type Config struct {
 	Logger       *slog.Logger
 	Secrets      auth.Secrets      // nil uses the OS keychain
 	Ready        func(addr string) // called with the bound address once serving
+	Notice       io.Writer         // receives the access URL under AllowRemote; never the log
 	EngineConfig syncer.Config     // zero values take engine defaults; polling is overridden
 }
 
@@ -108,7 +111,7 @@ func Run(ctx context.Context, cfg Config) error {
 		log = slog.New(slog.DiscardHandler)
 	}
 	if cfg.AllowRemote {
-		log.Warn("accepting non-loopback connections; the UI has no login", "addr", cfg.Addr)
+		log.Warn("accepting non-loopback connections; pages need the access token printed at startup", "addr", cfg.Addr)
 	}
 	db, err := store.Open(ctx, cfg.DBPath, log)
 	if err != nil {
@@ -170,9 +173,13 @@ func Run(ctx context.Context, cfg Config) error {
 		Device:    &auth.DeviceClient{BaseURL: cfg.GitHubURL, ClientID: auth.ClientID()},
 		NewClient: func(token string) (*github.Client, error) { return newClient(token, "") },
 	})
+	var accessToken string
+	if cfg.AllowRemote {
+		accessToken = rand.Text()
+	}
 	srv, err := web.New(web.Options{
 		Store: db, Hub: h, Auth: mgr, Engine: engine, Metrics: promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
-		Log: log, Addr: ln.Addr().String(), AllowRemote: cfg.AllowRemote, DefaultPolling: cfg.Polling, ImportDir: cfg.ImportDir,
+		Log: log, Addr: ln.Addr().String(), AllowRemote: cfg.AllowRemote, AccessToken: accessToken, DefaultPolling: cfg.Polling, ImportDir: cfg.ImportDir,
 	})
 	if err != nil {
 		_ = ln.Close()
@@ -200,6 +207,10 @@ func Run(ctx context.Context, cfg Config) error {
 	repos, _ := db.Repos(ctx)
 	log.Info("devbox started", "version", version.Version, "url", "http://"+ln.Addr().String(), "db", cfg.DBPath,
 		"polling", polling.String(), "polling_source", source, "accounts", len(accounts), "repos", len(repos), "device_flow", mgr.DeviceConfigured())
+	if accessToken != "" && cfg.Notice != nil {
+		// The URL carries a credential, so it goes to the terminal, not the structured log.
+		fmt.Fprintf(cfg.Notice, "devbox: remote access is on; open http://%s/?token=%s\n", ln.Addr(), accessToken)
+	}
 	if cfg.Ready != nil {
 		cfg.Ready(ln.Addr().String())
 	}

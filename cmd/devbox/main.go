@@ -100,7 +100,7 @@ func serve(args []string, stderr io.Writer) int {
 	}
 	cfg := app.Config{
 		Addr: *addr, DBPath: *dbPath, Polling: polling, AllowRemote: *allowRemote,
-		GitHubAPIURL: *apiURL, GitHubURL: *webURL, ImportDir: defaultImportDir(), Logger: log,
+		GitHubAPIURL: *apiURL, GitHubURL: *webURL, ImportDir: defaultImportDir(), Logger: log, Notice: stderr,
 	}
 	if err := cfg.Validate(); err != nil {
 		fmt.Fprintln(stderr, "devbox serve:", err)

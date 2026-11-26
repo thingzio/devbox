@@ -46,14 +46,17 @@ The following are in scope for a report:
 - DNS rebinding or any other way for a website to read the UI while it is
   bound to loopback;
 - a redirect from DevBox to a location outside it;
+- with `--allow-remote`, reaching any page other than `/healthz` without the
+  access token printed at startup;
 - any write to GitHub, or a request to a host other than GitHub's API and
   sign-in endpoints; and
 - resource exhaustion from GitHub data that bounded reads should have limited.
 
 The following are **not** vulnerabilities in DevBox:
 
-- running with `--allow-remote` on an untrusted network. The UI has no login;
-  the flag exists for trusted networks and DevBox warns when it is used;
+- eavesdropping on `--allow-remote` traffic. The UI is plain HTTP, so the
+  access token and session cookie travel unencrypted; put it behind TLS (an
+  SSH tunnel or a reverse proxy) on any network you do not trust;
 - anything that requires an attacker who can already run code as your user or
   read your keychain and home directory;
 - the content of pull requests, or the behavior of GitHub, its API, or an

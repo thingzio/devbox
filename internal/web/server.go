@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -49,6 +50,7 @@ type Options struct {
 	Log            *slog.Logger
 	Addr           string // actual listen address, for Host and Origin checks
 	AllowRemote    bool
+	AccessToken    string         // required with AllowRemote: the secret in the startup URL
 	DefaultPolling syncer.Polling // from --poll-interval; a saved UI choice overrides it
 	ImportDir      string
 	Now            func() time.Time
@@ -60,6 +62,7 @@ type Server struct {
 	o            Options
 	pages        map[string]*template.Template
 	allowedHosts map[string]bool
+	session      string // expected session cookie; empty when no access token is required
 }
 
 var funcs = template.FuncMap{"join": strings.Join, "profile": profileURL}
@@ -83,6 +86,9 @@ func New(o Options) (*Server, error) {
 		}
 		pages[name] = t
 	}
+	if o.AllowRemote && o.AccessToken == "" {
+		return nil, errors.New("web: remote access needs an access token")
+	}
 	_, port, err := net.SplitHostPort(o.Addr)
 	if err != nil {
 		return nil, fmt.Errorf("web: listen address %q: %w", o.Addr, err)
@@ -91,7 +97,11 @@ func New(o Options) (*Server, error) {
 	for _, h := range []string{"localhost", "127.0.0.1", "[::1]"} {
 		hosts[h+":"+port] = true
 	}
-	return &Server{o: o, pages: pages, allowedHosts: hosts}, nil
+	srv := &Server{o: o, pages: pages, allowedHosts: hosts}
+	if o.AccessToken != "" {
+		srv.session = sessionValue(o.AccessToken)
+	}
+	return srv, nil
 }
 
 // Handler returns the full HTTP handler with security and logging middleware.
@@ -119,7 +129,8 @@ func (s *Server) viewRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(static)))
 }
 
-// secure applies the local-server rules: security headers, Host allow-listing, and same-origin POSTs.
+// secure applies the local-server rules: security headers, Host allow-listing,
+// the access token for remote connections, and same-origin POSTs.
 func (s *Server) secure(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
@@ -129,6 +140,9 @@ func (s *Server) secure(next http.Handler) http.Handler {
 		h.Set("X-Frame-Options", "DENY")
 		if !s.o.AllowRemote && !s.allowedHosts[r.Host] {
 			http.Error(w, "invalid host", http.StatusForbidden)
+			return
+		}
+		if !s.admit(w, r) {
 			return
 		}
 		if r.Method != http.MethodGet && r.Method != http.MethodHead && !sameOrigin(r) {

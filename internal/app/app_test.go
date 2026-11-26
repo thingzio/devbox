@@ -1,16 +1,20 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -264,5 +268,71 @@ func TestAccountToken(t *testing.T) {
 				t.Fatalf("err = %v, want keychain unavailable %v", err, tc.transient)
 			}
 		})
+	}
+}
+
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+func TestRunRemoteRequiresTheStartupToken(t *testing.T) {
+	cfg := baseConfig(t)
+	cfg.AllowRemote = true
+	var notice, logs syncBuffer
+	cfg.Notice = &notice
+	cfg.Logger = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	ready := make(chan string, 1)
+	cfg.Ready = func(addr string) { ready <- addr }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, cfg) }()
+	var addr string
+	select {
+	case addr = <-ready:
+	case err := <-done:
+		t.Fatalf("Run exited: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("not ready")
+	}
+	m := regexp.MustCompile(`http://\S+/\?token=(\S+)`).FindStringSubmatch(notice.String())
+	if m == nil {
+		t.Fatalf("no access URL printed: %q", notice.String())
+	}
+	token := m[1]
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	status := func(path string) int {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+addr+path, nil)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	if got := status("/"); got != http.StatusUnauthorized {
+		t.Errorf("GET / without token = %d", got)
+	}
+	if got := status("/?token=" + token); got != http.StatusSeeOther {
+		t.Errorf("GET / with token = %d", got)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if strings.Contains(logs.String(), token) {
+		t.Fatal("access token written to the log")
 	}
 }
