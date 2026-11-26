@@ -21,13 +21,16 @@ var (
 	ErrMissingScope = errors.New("the token lacks the repo scope")
 )
 
-// Identity is a token's owner and granted scopes. GitHub App user tokens
-// report no scopes: the app's permissions govern them instead.
+// Identity is a token's owner and granted scopes.
 type Identity struct {
-	Login          string
-	Scopes         []string
-	ScopesReported bool
+	Login  string
+	Scopes []string
 }
+
+// gitHubAppUserToken reports whether a token is a GitHub App user token
+// (GitHub's documented "ghu_" prefix). GitHub sends it an empty
+// X-OAuth-Scopes header: the app's permissions govern it, not scopes.
+func gitHubAppUserToken(token string) bool { return strings.HasPrefix(token, "ghu_") }
 
 // Identify reads the token owner's login and the scopes GitHub reports.
 func Identify(ctx context.Context, c *github.Client) (Identity, error) {
@@ -47,7 +50,7 @@ func Identify(ctx context.Context, c *github.Client) (Identity, error) {
 			scopes = append(scopes, s)
 		}
 	}
-	return Identity{Login: u.Login, Scopes: scopes, ScopesReported: len(h.Values("X-OAuth-Scopes")) > 0}, nil
+	return Identity{Login: u.Login, Scopes: scopes}, nil
 }
 
 // ManagerOptions configures a Manager.
@@ -190,7 +193,7 @@ func (m *Manager) complete(ctx context.Context, cred Credential, kind string) (s
 	if err != nil {
 		return store.Account{}, fmt.Errorf("auth: verify token: %w", err)
 	}
-	if (kind == "pat" || id.ScopesReported) && !slices.Contains(id.Scopes, "repo") {
+	if !gitHubAppUserToken(cred.AccessToken) && !slices.Contains(id.Scopes, "repo") {
 		return store.Account{}, ErrMissingScope
 	}
 	if err := m.o.Secrets.Set(id.Login, cred.encode()); err != nil {
