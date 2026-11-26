@@ -139,7 +139,21 @@ func parseRepoReference(input string) (string, string, error) {
 
 type accountView struct {
 	Login, Kind, Scopes, Status, Detail, PausedUntil, Rates string
+	RevokeURL                                               string
 	OK                                                      bool
+}
+
+// revokeURL is the GitHub settings page that revokes the account's credential.
+// Sign-in through the GitHub App reports no scopes; an OAuth App token does.
+func revokeURL(kind string, scopes []string) string {
+	switch {
+	case kind == "pat":
+		return "https://github.com/settings/tokens"
+	case len(scopes) == 0:
+		return "https://github.com/settings/apps/authorizations"
+	default:
+		return "https://github.com/settings/applications"
+	}
 }
 
 type repoSettingsView struct {
@@ -193,7 +207,7 @@ func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
 		if scopes == "" && a.Kind == "oauth" {
 			scopes = "GitHub App permissions"
 		}
-		v.Accounts = append(v.Accounts, accountView{Login: a.Login, Kind: a.Kind, Scopes: scopes,
+		v.Accounts = append(v.Accounts, accountView{Login: a.Login, Kind: a.Kind, Scopes: scopes, RevokeURL: revokeURL(a.Kind, a.Scopes),
 			Status: a.Status, Detail: a.StatusDetail, PausedUntil: paused[a.Login], Rates: rates[a.Login], OK: a.Status == store.StatusOK})
 		v.AccountLogins = append(v.AccountLogins, a.Login)
 	}

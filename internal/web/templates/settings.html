@@ -11,7 +11,7 @@
 <td>{{if .OK}}<span class="pill ok">{{.Status}}</span>{{else}}<span class="pill danger">{{.Status}}</span>{{end}}{{if .Detail}} <span class="muted small">{{.Detail}}</span>{{end}}{{if .PausedUntil}} <span class="pill warn">paused until {{.PausedUntil}}</span>{{end}}</td>
 <td class="mono small">{{if .Rates}}{{.Rates}}{{else}}<span class="muted">not polled yet</span>{{end}}</td>
 <td><div class="row-actions"><form method="post" action="/accounts/{{.Login}}/delete"><button class="btn danger" type="submit">Remove</button></form>
-<a class="small" href="https://github.com/settings/applications">Revoke on GitHub</a></div></td></tr>{{end}}
+<a class="small" href="{{.RevokeURL}}">Revoke on GitHub</a></div></td></tr>{{end}}
 </tbody></table></div>{{else}}<p class="muted">No accounts yet.</p>{{end}}
 <h3>Add an account</h3>
 {{if .ClientIDConfigured}}<div id="device"><button class="btn" type="button" hx-post="/accounts/device" hx-target="#device" hx-swap="innerHTML">Sign in with GitHub</button></div>

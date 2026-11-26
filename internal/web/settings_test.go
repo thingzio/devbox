@@ -307,3 +307,25 @@ func TestImportAcceptsOnlyListedOverlays(t *testing.T) {
 		t.Fatalf("unlisted file imported: %+v", repos)
 	}
 }
+
+func TestRevokeLinkMatchesTheCredential(t *testing.T) {
+	cases := []struct {
+		name, kind string
+		scopes     []string
+		want       string
+	}{
+		{"github app", "oauth", nil, `href="https://github.com/settings/apps/authorizations"`},
+		{"oauth app", "oauth", []string{"repo", "read:org"}, `href="https://github.com/settings/applications"`},
+		{"classic token", "pat", []string{"repo"}, `href="https://github.com/settings/tokens"`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := newTestServer(t)
+			if _, err := ts.db.UpsertAccount(ts.ctx, "me", tc.kind, tc.scopes, t0); err != nil {
+				t.Fatal(err)
+			}
+			_, body := ts.get("/settings")
+			assertContains(t, "settings", body, tc.want)
+		})
+	}
+}
