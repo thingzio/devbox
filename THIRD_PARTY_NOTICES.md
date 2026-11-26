@@ -10,31 +10,32 @@ licenses and attributions are reproduced here.
 > Do not edit by hand -- run `make notices` after changing dependencies.
 
 
-## Go modules (21)
+## Go modules (22)
 
 | Module | Version | License |
 |---|---|---|
 | `github.com/beorn7/perks` | v1.0.1 | MIT |
 | `github.com/cespare/xxhash/v2` | v2.3.0 | MIT |
 | `github.com/danieljoos/wincred` | v1.2.3 | MIT |
-| `github.com/dustin/go-humanize` | v1.0.1 | MIT |
-| `github.com/godbus/dbus/v5` | v5.2.2 | BSD-2-Clause |
+| `github.com/dustin/go-humanize` | v1.1.0 | MIT |
+| `github.com/godbus/dbus/v5` | v5.2.4 | BSD-2-Clause |
 | `github.com/google/uuid` | v1.6.0 | BSD-3-Clause |
 | `github.com/mattn/go-isatty` | v0.0.24 | MIT |
 | `github.com/munnerz/goautoneg` | v0.0.0-20191010083416-a7dc8b61c822 | BSD-3-Clause |
-| `github.com/ncruces/go-strftime` | v1.0.0 | MIT |
+| `github.com/ncruces/go-strftime` | v1.1.0 | MIT |
+| `github.com/pandatix/go-abnf` | v0.5.5 | MIT |
 | `github.com/prometheus/client_golang` | v1.25.0 | Apache-2.0 |
 | `github.com/prometheus/client_model` | v0.6.3 | Apache-2.0 |
-| `github.com/prometheus/common` | v0.72.0 | Apache-2.0 |
-| `github.com/prometheus/procfs` | v0.22.0 | Apache-2.0 |
+| `github.com/prometheus/common` | v0.74.0 | Apache-2.0 |
+| `github.com/prometheus/procfs` | v0.23.0 | Apache-2.0 |
 | `github.com/remyoudompheng/bigfft` | v0.0.0-20230129092748-24d4a6f8daec | BSD-3-Clause |
 | `github.com/zalando/go-keyring` | v0.2.8 | MIT |
-| `golang.org/x/sys` | v0.48.0 | BSD-3-Clause |
+| `golang.org/x/sys` | v0.50.0 | BSD-3-Clause |
 | `google.golang.org/protobuf` | v1.36.12 | BSD-3-Clause |
-| `modernc.org/libc` | v1.77.1 | BSD-3-Clause |
+| `modernc.org/libc` | v1.80.1 | BSD-3-Clause |
 | `modernc.org/mathutil` | v1.7.1 | BSD-3-Clause |
 | `modernc.org/memory` | v1.12.1 | BSD-3-Clause |
-| `modernc.org/sqlite` | v1.60.1 | BSD-3-Clause |
+| `modernc.org/sqlite` | v1.63.0 | BSD-3-Clause |
 
 ## Embedded assets (1)
 

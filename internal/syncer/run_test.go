@@ -58,7 +58,9 @@ func TestRunStartsPollerForNewRepo(t *testing.T) {
 	en.eng.ReposChanged()
 	waitFor(t, func() bool { return fpCalls() == 2 })
 	cancel()
-	<-done
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
 }
 
 func waitFor(t *testing.T, cond func() bool) {
