@@ -2,7 +2,7 @@
 {{- if or .Accounts .Paused .Repos}}
 {{range .Accounts}}<p class="msg err">@{{.Login}} needs re-authentication: {{.Detail}} <a href="/settings#accounts">Re-authenticate</a></p>{{end}}
 {{range .Paused}}<p class="msg warn">@{{.Account}} is paused until {{.Until}}: {{.Reason}}</p>{{end}}
-{{range .Repos}}<p class="msg {{.Level}}"><strong>{{.Name}}</strong>: {{join .Messages "; "}}</p>{{end}}
+{{range .Repos}}<p class="msg {{.Level}}"><strong>{{.Name}}</strong>: {{join .Messages "; "}}{{with .SSOURL}} <a href="{{.}}">Authorize for SSO</a>{{end}}</p>{{end}}
 {{end -}}
 </section>{{end}}
 

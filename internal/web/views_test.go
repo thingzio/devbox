@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/syncer"
 )
@@ -306,5 +307,34 @@ func TestNavMarksCurrentPage(t *testing.T) {
 		if !strings.Contains(body, want.current) || strings.Contains(body, want.other) {
 			t.Errorf("GET %s: nav does not mark the current page only", path)
 		}
+	}
+}
+
+func TestStatusBarLinksSSOAuthorization(t *testing.T) {
+	cases := []struct {
+		name, err, link string
+	}{
+		{"github sso link", (&github.SSORequiredError{URL: "https://github.com/enterprises/acme/sso?authorization_request=abc"}).Error(),
+			`<a href="https://github.com/enterprises/acme/sso?authorization_request=abc">Authorize for SSO</a>`},
+		{"foreign link is not rendered", "github: organization SAML SSO requires authorizing this token at https://evil.example/sso", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := newTestServer(t)
+			r := ts.repo(ts.account("me"), "o", "r")
+			if _, err := ts.db.RecordPoll(ts.ctx, r.ID, t0, errorString(tc.err)); err != nil {
+				t.Fatal(err)
+			}
+			_, body := ts.get("/")
+			assertContains(t, "queue", body, "requires authorizing this token for SSO")
+			if tc.link != "" {
+				assertContains(t, "queue", body, tc.link)
+			}
+			for _, banned := range []string{"authorization_request=abc</", "evil.example"} {
+				if strings.Contains(body, banned) {
+					t.Errorf("body shows the raw URL %q", banned)
+				}
+			}
+		})
 	}
 }

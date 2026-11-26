@@ -69,6 +69,10 @@ import.
 - **Classic token**: a classic personal access token with the `repo` scope.
   Classic scopes cannot be read-only, so prefer signing in with GitHub.
   Fine-grained tokens are not supported.
+- **Organizations with SAML SSO** also need the token authorized for SSO. When
+  a repository shows **Authorize for SSO**, open that link while signed in to
+  the organization's identity provider. If an organization will not install
+  the GitHub App, add a classic token authorized for its SSO instead.
 
 You can add several accounts, for example personal and work. Each repository is
 watched by one of them, and the queue shows them all.

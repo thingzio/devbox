@@ -303,6 +303,23 @@ type repoStatusView struct {
 	Name     string
 	Level    string
 	Messages []string
+	SSOURL   string // GitHub page that authorizes the token for the organization's SSO
+}
+
+const ssoRequired = "SAML SSO requires authorizing this token"
+
+// pollError shortens an SSO error to a sentence and returns its authorization
+// link separately, so the UI can offer it as a link; githubURL drops any URL
+// that is not on github.com.
+func pollError(msg string) (string, string) {
+	if !strings.Contains(msg, ssoRequired) {
+		return "last error: " + msg, ""
+	}
+	link := ""
+	if _, after, ok := strings.Cut(msg, ssoRequired+" at "); ok {
+		link = githubURL(strings.TrimSpace(after))
+	}
+	return "last error: the organization requires authorizing this token for SSO", link
 }
 
 // syncView is the header heartbeat: when repositories were last checked and how.
@@ -365,8 +382,11 @@ func (s *Server) buildStatus(ctx context.Context) statusView {
 		case last != nil && now.Sub(*last) > staleAfter:
 			msgs, level = append(msgs, fmt.Sprintf("last successful poll %s ago", minutesAgo(now.Sub(*last)))), "warn"
 		}
+		var ssoURL string
 		if st.Sync.LastError != "" {
-			msgs, level = append(msgs, "last error: "+st.Sync.LastError), "warn"
+			var msg string
+			msg, ssoURL = pollError(st.Sync.LastError)
+			msgs, level = append(msgs, msg), "warn"
 		}
 		if st.Pending > 0 {
 			msgs = append(msgs, fmt.Sprintf("%d awaiting enrichment", st.Pending))
@@ -386,7 +406,7 @@ func (s *Server) buildStatus(ctx context.Context) statusView {
 			msgs = append(msgs, detail)
 		}
 		if len(msgs) > 0 {
-			v.Repos = append(v.Repos, repoStatusView{Name: st.Repo.FullName() + " @" + st.Repo.Account, Level: level, Messages: msgs})
+			v.Repos = append(v.Repos, repoStatusView{Name: st.Repo.FullName() + " @" + st.Repo.Account, Level: level, Messages: msgs, SSOURL: ssoURL})
 			warn = warn || level == "warn"
 		}
 	}
