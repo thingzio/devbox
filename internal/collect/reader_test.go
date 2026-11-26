@@ -187,7 +187,12 @@ func TestRESTReads(t *testing.T) {
 			if r.URL.Query().Get("check_name") != "tests / Test" {
 				t.Errorf("check_name = %q", r.URL.Query().Get("check_name"))
 			}
-			fmt.Fprint(w, `{"check_runs":[{"conclusion":"skipped"},{"conclusion":null}]}`)
+			if r.URL.Query().Get("page") == "" {
+				w.Header().Set("Link", fmt.Sprintf(`<%s/repos/o/r/commits/head/check-runs?check_name=tests+%%2F+Test&per_page=100&page=2>; rel="next"`, base))
+				fmt.Fprint(w, `{"check_runs":[{"conclusion":"skipped"},{"conclusion":null}]}`)
+				return
+			}
+			fmt.Fprint(w, `{"check_runs":[{"conclusion":"success"}]}`)
 		case "/repos/o/r/compare/base...head":
 			fmt.Fprint(w, `{"files":[{"filename":"a.go"},{"filename":".github/x.yml","previous_filename":"ci/x.yml"}]}`)
 		case "/repos/o/r/compare/base...huge":
@@ -218,7 +223,7 @@ func TestRESTReads(t *testing.T) {
 	if n, err := reader.AwaitingRuns(ctx, "o", "r", "head"); err != nil || n != 2 {
 		t.Fatalf("AwaitingRuns = %d, %v", n, err)
 	}
-	if c, err := reader.MarkerConclusions(ctx, "o", "r", "head", "tests / Test"); err != nil || !slices.Equal(c, []string{"skipped", ""}) {
+	if c, err := reader.MarkerConclusions(ctx, "o", "r", "head", "tests / Test"); err != nil || !slices.Equal(c, []string{"skipped", "", "success"}) {
 		t.Fatalf("MarkerConclusions = %v, %v", c, err)
 	}
 	if f, err := reader.ChangedFiles(ctx, "o", "r", "base", "head"); err != nil || !slices.Equal(f, []string{"a.go", ".github/x.yml", "ci/x.yml"}) {

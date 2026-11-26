@@ -66,6 +66,9 @@ func readResult(ctx context.Context, q rowQuerier, repoID int64, number int) (*R
 	return &r, nil
 }
 
+// Same reports whether two results would store identically.
+func (a ResultRow) Same(b ResultRow) bool { return sameResult(a, b) }
+
 func sameResult(a, b ResultRow) bool {
 	sameSince := (a.WaitingSince == nil) == (b.WaitingSince == nil) &&
 		(a.WaitingSince == nil || ms(*a.WaitingSince) == ms(*b.WaitingSince))

@@ -33,8 +33,11 @@ func (e *Engine) reclassifyItems(ctx context.Context, items []store.Classifiable
 		if rec.Version != classify.RecordVersion || rec.CollectionRulesHash != it.Rules.CollectionHash() {
 			continue // waiting for enrichment to replace the refreshing result
 		}
-		res := classify.Classify(rec, it.Rules, it.Account, now)
-		tr, ok, err := e.d.Store.CommitResult(ctx, it.RepoID, it.RepoRevision, it.Number, it.PRRevision, resultRow(res), now)
+		row := resultRow(classify.Classify(rec, it.Rules, it.Account, now))
+		if it.Current != nil && it.Current.Same(row) {
+			continue // unchanged: no write transaction to compete with enrichment commits
+		}
+		tr, ok, err := e.d.Store.CommitResult(ctx, it.RepoID, it.RepoRevision, it.Number, it.PRRevision, row, now)
 		if errors.Is(err, store.ErrStale) {
 			continue
 		}

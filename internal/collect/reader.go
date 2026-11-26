@@ -232,24 +232,30 @@ func (g GitHubReader) AwaitingRuns(ctx context.Context, owner, name, head string
 	return out.TotalCount, nil
 }
 
-// MarkerConclusions lists the conclusions of runs of one check on head ("" while running).
+// MarkerConclusions lists the conclusions of runs of one check on head ("" while running), across all pages.
 func (g GitHubReader) MarkerConclusions(ctx context.Context, owner, name, head, check string) ([]string, error) {
-	var out struct {
-		CheckRuns []struct {
-			Conclusion *string `json:"conclusion"`
-		} `json:"check_runs"`
-	}
+	conclusions := []string{}
 	path := fmt.Sprintf("%s/commits/%s/check-runs?check_name=%s&per_page=100", repoPath(owner, name), url.PathEscape(head), url.QueryEscape(check))
-	if _, err := g.Client.Get(ctx, path, &out); err != nil {
-		return nil, err
-	}
-	conclusions := make([]string, 0, len(out.CheckRuns))
-	for _, r := range out.CheckRuns {
-		c := ""
-		if r.Conclusion != nil {
-			c = *r.Conclusion
+	err := g.Client.GetPages(ctx, path, func(page []byte) error {
+		var out struct {
+			CheckRuns []struct {
+				Conclusion *string `json:"conclusion"`
+			} `json:"check_runs"`
 		}
-		conclusions = append(conclusions, c)
+		if err := json.Unmarshal(page, &out); err != nil {
+			return fmt.Errorf("decode check runs: %w", err)
+		}
+		for _, r := range out.CheckRuns {
+			c := ""
+			if r.Conclusion != nil {
+				c = *r.Conclusion
+			}
+			conclusions = append(conclusions, c)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return conclusions, nil
 }

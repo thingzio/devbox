@@ -229,6 +229,9 @@ func TestCommitResult(t *testing.T) {
 	if len(items) != 1 || items[0].Number != 7 || items[0].Account != "me" || items[0].PRRevision != s.Revision {
 		t.Fatalf("Reclassifiable = %+v", items)
 	}
+	if cur := items[0].Current; cur == nil || !cur.Same(stale) || cur.Same(ResultRow{Bucket: "stale_changes_requested", Reason: "9 days", Action: "nudge"}) {
+		t.Fatalf("Reclassifiable current result = %+v", items[0].Current)
+	}
 }
 
 func TestDueWork(t *testing.T) {

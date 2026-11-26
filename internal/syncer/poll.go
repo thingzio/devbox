@@ -89,15 +89,16 @@ func (e *Engine) recordPoll(ctx context.Context, log *slog.Logger, repo store.Re
 	return s.ConsecutiveFailures, pollErr
 }
 
-// pollDelay is the jittered interval, or min(interval × 2^failures, 15m) after failures.
+// pollDelay is the interval, or min(interval × 2^failures, 15m) after
+// failures, with ±10% jitter so repositories that fail together, as in a
+// GitHub outage, do not retry in lockstep.
 func (e *Engine) pollDelay(failures int) time.Duration {
-	interval := e.Polling().Interval
-	if failures <= 0 {
-		return time.Duration(float64(interval) * (0.9 + 0.2*e.d.Rand()))
-	}
-	d := interval
+	d := e.Polling().Interval
 	for i := 0; i < failures && d < maxPollBackoff; i++ {
 		d *= 2
 	}
-	return min(d, maxPollBackoff)
+	if failures > 0 {
+		d = min(d, maxPollBackoff)
+	}
+	return time.Duration(float64(d) * (0.9 + 0.2*e.d.Rand()))
 }

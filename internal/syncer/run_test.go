@@ -151,6 +151,24 @@ func TestPollDelayFollowsCurrentInterval(t *testing.T) {
 	}
 }
 
+func TestPollBackoffIsJittered(t *testing.T) {
+	en := newEnv(t, Config{PollInterval: 2 * time.Minute})
+	for _, tc := range []struct {
+		rand     float64
+		failures int
+		want     time.Duration
+	}{
+		{0, 1, 216 * time.Second},
+		{0.999999, 1, 264 * time.Second},
+		{0, 9, 810 * time.Second},
+	} {
+		en.eng.d.Rand = func() float64 { return tc.rand }
+		if d := en.eng.pollDelay(tc.failures); d.Round(time.Second) != tc.want {
+			t.Errorf("pollDelay(%d) at rand %v = %v, want %v", tc.failures, tc.rand, d, tc.want)
+		}
+	}
+}
+
 func TestRunPurgesOnStartAndPeriodically(t *testing.T) {
 	en := newEnv(t, Config{PollInterval: time.Hour, ReclassifyEvery: time.Hour, ResyncEvery: time.Hour, PurgeEvery: 20 * time.Millisecond})
 	en.src.set(func(f *fakeSource) { f.observed = []collect.Observed{obs(1, "a"), obs(2, "b")} })

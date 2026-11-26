@@ -120,6 +120,7 @@ type Classifiable struct {
 	Number       int
 	PRRevision   int64
 	Record       []byte
+	Current      *ResultRow // the stored result, nil when none
 }
 
 // PRStates lists every stored PR of a repository.
@@ -397,8 +398,10 @@ WHERE repo_id = ? AND number = ?`, o.HeadOID, now, o.HeadOID, o.Fingerprint, now
 
 // Reclassifiable lists open PRs with records in enabled repos (repoID 0 = all).
 func (db *DB) Reclassifiable(ctx context.Context, repoID int64) ([]Classifiable, error) {
-	rows, err := db.r.QueryContext(ctx, `SELECT p.repo_id, r.revision, a.login, r.rules, p.number, p.revision, p.record
+	rows, err := db.r.QueryContext(ctx, `SELECT p.repo_id, r.revision, a.login, r.rules, p.number, p.revision, p.record,
+  res.bucket, res.reason, res.action, res.waiting_since, res.also, res.notes
 FROM prs p JOIN repos r ON r.id = p.repo_id JOIN accounts a ON a.id = r.account_id
+LEFT JOIN results res ON res.repo_id = p.repo_id AND res.number = p.number
 WHERE p.state = 'open' AND r.enabled = 1 AND p.record IS NOT NULL AND (? = 0 OR p.repo_id = ?)
 ORDER BY p.repo_id, p.number`, repoID, repoID)
 	if err != nil {
@@ -409,8 +412,15 @@ ORDER BY p.repo_id, p.number`, repoID, repoID)
 	for rows.Next() {
 		var c Classifiable
 		var rawRules, record string
-		if err := rows.Scan(&c.RepoID, &c.RepoRevision, &c.Account, &rawRules, &c.Number, &c.PRRevision, &record); err != nil {
+		var bucket, reason, action, also, notes sql.NullString
+		var since sql.NullInt64
+		if err := rows.Scan(&c.RepoID, &c.RepoRevision, &c.Account, &rawRules, &c.Number, &c.PRRevision, &record,
+			&bucket, &reason, &action, &since, &also, &notes); err != nil {
 			return nil, err
+		}
+		if bucket.Valid {
+			c.Current = &ResultRow{Bucket: bucket.String, Reason: reason.String, Action: action.String,
+				WaitingSince: timePtr(since), Also: decodeList(also.String), Notes: decodeList(notes.String)}
 		}
 		if c.Rules, err = rules.Parse([]byte(rawRules)); err != nil {
 			return nil, fmt.Errorf("store: repo %d rules: %w", c.RepoID, err)
