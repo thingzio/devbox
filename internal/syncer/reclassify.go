@@ -46,7 +46,7 @@ func (e *Engine) reclassifyItems(ctx context.Context, items []store.Classifiable
 		}
 		if ok {
 			changed++
-			e.published(e.d.Log.With("repo_id", it.RepoID), it.RepoID, it.Number, tr)
+			e.published(e.d.Log.With("repo_id", it.RepoID, "pr", it.Number), it.RepoID, it.Number, tr)
 		}
 	}
 	e.d.Log.Debug("reclassify pass", "records", len(items), "changed", changed)

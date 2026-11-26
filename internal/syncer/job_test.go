@@ -1,10 +1,12 @@
 package syncer
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"slices"
 	"strings"
 	"testing"
@@ -495,5 +497,27 @@ func TestPausedAccountDoesNotStarveOthers(t *testing.T) {
 	}
 	if in := en.src.inputs[len(en.src.inputs)-1]; in.RepoID != other.ID || in.Viewer != "work" {
 		t.Fatalf("dispatched %+v, want the work account's PR", in)
+	}
+}
+
+func TestTransitionLogsNameThePROnce(t *testing.T) {
+	en := newEnv(t, Config{})
+	var buf bytes.Buffer
+	en.eng.d.Log = slog.New(slog.NewJSONHandler(&buf, nil))
+	en.observeAndEnrich(obs(1, "a"))
+	en.src.set(func(f *fakeSource) { f.observed = nil })
+	en.mustPoll() // closes #1
+	lines := 0
+	for _, line := range strings.Split(strings.TrimSpace(buf.String()), "\n") {
+		if !strings.Contains(line, `"msg":"bucket transition"`) {
+			continue
+		}
+		lines++
+		if n := strings.Count(line, `"pr":`); n != 1 {
+			t.Errorf("pr appears %d times: %s", n, line)
+		}
+	}
+	if lines != 2 {
+		t.Fatalf("transition lines = %d, want 2 (enrichment and close):\n%s", lines, buf.String())
 	}
 }

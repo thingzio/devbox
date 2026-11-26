@@ -63,7 +63,7 @@ func (e *Engine) PollRepo(ctx context.Context, repoID int64) (int, error) {
 	}
 	for _, tr := range applied.Closed {
 		e.cancelJob(prKey{repo.ID, tr.Number})
-		e.published(log, repo.ID, tr.Number, &tr)
+		e.published(log.With("pr", tr.Number), repo.ID, tr.Number, &tr)
 	}
 	elapsed := e.now().Sub(start)
 	e.d.Metrics.PollDuration.WithLabelValues(repo.FullName()).Observe(elapsed.Seconds())

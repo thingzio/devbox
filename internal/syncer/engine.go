@@ -379,13 +379,14 @@ func (e *Engine) cancelRepo(repoID int64) {
 	}
 }
 
+// published logs a transition and announces the change; log must already name the PR.
 func (e *Engine) published(log *slog.Logger, repoID int64, number int, tr *store.Transition) {
 	if tr != nil {
 		from := ""
 		if tr.From != nil {
 			from = *tr.From
 		}
-		log.Info("bucket transition", "pr", number, "from", from, "to", tr.To, "reason", tr.Reason)
+		log.Info("bucket transition", "from", from, "to", tr.To, "reason", tr.Reason)
 		e.d.Metrics.Transitions.WithLabelValues(tr.To).Inc()
 	}
 	e.d.Hub.Publish(hub.Event{RepoID: repoID, Number: number})
