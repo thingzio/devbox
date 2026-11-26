@@ -121,6 +121,8 @@ func (s *Server) viewRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /fragments/status", s.handleStatusFragment)
 	mux.HandleFunc("GET /events", s.handleEvents)
 	mux.HandleFunc("POST /refresh", s.handleRefresh)
+	mux.HandleFunc("POST /snooze", s.handleSnooze)
+	mux.HandleFunc("POST /unsnooze", s.handleUnsnooze)
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("ok")) })
 	if s.o.Metrics != nil {
 		mux.Handle("GET /metrics", s.o.Metrics)

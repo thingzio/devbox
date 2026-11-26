@@ -343,3 +343,15 @@ details.help pre { margin-top: 0.4rem; }
   .detail-grid dd { margin-bottom: 0.5rem; }
   .handoff { flex-direction: column; align-items: stretch; }
 }
+
+/* Snooze */
+.snooze { margin-top: 0.35rem; font-size: 0.82rem; }
+.snooze > summary { display: inline; cursor: pointer; color: var(--muted); list-style: none; }
+.snooze > summary::-webkit-details-marker { display: none; }
+.snooze > summary:hover, .snooze[open] > summary { color: var(--accent); }
+.snooze-menu, .snooze-state { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; margin-top: 0.4rem; }
+.snoozed > summary { cursor: pointer; list-style: none; }
+.snoozed > summary::-webkit-details-marker { display: none; }
+.snoozed > summary h2::before { content: "▸"; color: var(--muted); }
+.snoozed[open] > summary h2::before { content: "▾"; }
+.snoozed[open] > summary { margin-bottom: 0.5rem; }

@@ -120,23 +120,27 @@ func cacheResult(v bool, err error) (bool, bool, error) {
 	return v, true, nil
 }
 
-// Purge deletes cache rows older than 30 days, and PRs closed longer than
-// ClosedRetention together with their transitions. It returns the rows deleted
+// Purge deletes cache rows older than 30 days, PRs closed longer than
+// ClosedRetention together with their transitions, and snoozes that have ended. It returns the rows deleted
 // directly, not counting cascades.
 func (db *DB) Purge(ctx context.Context, now time.Time) (int64, error) {
 	cacheCutoff, closedCutoff := ms(now.Add(-cacheRetention)), ms(now.Add(-ClosedRetention))
 	var total int64
 	for _, p := range []struct {
-		q      string
-		cutoff int64
+		q    string
+		args []any
 	}{
-		{`DELETE FROM cache_diff WHERE created_at < ?`, cacheCutoff},
-		{`DELETE FROM cache_comment WHERE created_at < ?`, cacheCutoff},
-		{`DELETE FROM cache_team WHERE fetched_at < ?`, cacheCutoff},
-		{`DELETE FROM cache_policy WHERE fetched_at < ?`, cacheCutoff},
-		{`DELETE FROM prs WHERE state = 'closed' AND closed_at < ?`, closedCutoff},
+		{`DELETE FROM cache_diff WHERE created_at < ?`, []any{cacheCutoff}},
+		{`DELETE FROM cache_comment WHERE created_at < ?`, []any{cacheCutoff}},
+		{`DELETE FROM cache_team WHERE fetched_at < ?`, []any{cacheCutoff}},
+		{`DELETE FROM cache_policy WHERE fetched_at < ?`, []any{cacheCutoff}},
+		{`DELETE FROM prs WHERE state = 'closed' AND closed_at < ?`, []any{closedCutoff}},
+		{`DELETE FROM snoozes WHERE until_at < ?`, []any{ms(now)}},
+		{`DELETE FROM snoozes WHERE NOT EXISTS (SELECT 1 FROM results res JOIN prs p ON p.repo_id = res.repo_id AND p.number = res.number
+  WHERE res.repo_id = snoozes.repo_id AND res.number = snoozes.number AND res.bucket = snoozes.bucket
+    AND COALESCE(p.head_oid, '') = snoozes.head_oid)`, nil},
 	} {
-		res, err := db.w.ExecContext(ctx, p.q, p.cutoff)
+		res, err := db.w.ExecContext(ctx, p.q, p.args...)
 		if err != nil {
 			return total, fmt.Errorf("store: purge: %w", err)
 		}

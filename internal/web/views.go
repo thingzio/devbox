@@ -19,6 +19,7 @@ const staleAfter = 3 * time.Minute
 type noteView struct{ Text, URL string }
 
 type rowView struct {
+	RepoID     int64
 	Repo       string
 	Account    string
 	Number     int
@@ -34,6 +35,9 @@ type rowView struct {
 	FirstTime  bool
 	Size       string
 	Milestone  string
+	Snoozable  bool   // an action-bucket row, offered the snooze menu
+	Snoozed    string // why a snoozed row stays hidden, e.g. "until it changes"
+	Next       string // the page snooze forms return to
 	rank       classify.Rankable
 }
 
@@ -65,6 +69,7 @@ type queueView struct {
 	Others       []countLinkView
 	Repos        []countLinkView
 	Unclassified []rowView
+	Snoozed      []rowView
 	EmptyMessage string
 	FragmentURL  string
 	Filter       store.QueueFilter
@@ -125,9 +130,10 @@ func (s *Server) buildQueue(ctx context.Context, q queueQuery) (queueView, error
 			return queueView{}, err
 		}
 	}
-	byBucket := s.groupRows(scoped)
+	next := q.link(q.filter.Bucket)
+	byBucket, snoozed := s.groupRows(scoped, next)
 	selected := q.filter.Bucket
-	view := queueView{Filter: q.filter}
+	view := queueView{Filter: q.filter, Snoozed: snoozed}
 	view.Tiles = append(view.Tiles, tileView{Title: "All actions", Tone: "accent", URL: q.link(""), Active: selected == ""})
 	for _, b := range classify.ActionBuckets() {
 		n := len(byBucket[b])
@@ -177,16 +183,19 @@ func (s *Server) buildQueue(ctx context.Context, q queueQuery) (queueView, error
 	return view, nil
 }
 
-// groupRows converts queue rows to row views grouped by bucket, each group ranked.
-func (s *Server) groupRows(rows []store.QueueRow) map[classify.Bucket][]rowView {
+// groupRows converts queue rows to row views grouped by bucket, each group
+// ranked, setting snoozed rows aside; next is where their forms return.
+func (s *Server) groupRows(rows []store.QueueRow, next string) (map[classify.Bucket][]rowView, []rowView) {
 	now := s.o.Now()
 	byBucket := map[classify.Bucket][]rowView{}
+	var snoozed []rowView
 	for _, q := range rows {
 		var rec classify.Record
 		_ = json.Unmarshal(q.Record, &rec) // an undecodable record only loses badges
 		bucket := classify.Bucket(q.Result.Bucket)
 		repo := q.Owner + "/" + q.Name
 		rv := rowView{
+			RepoID: q.RepoID, Snoozable: bucket.IsAction(), Next: next,
 			Repo: repo, Account: q.Account, Number: q.Number, Title: titleOr(q.Title, q.Number), URL: githubURL(q.URL),
 			ExplainURL: explainURL(q.Owner, q.Name, q.Number), Author: q.Author, Age: age(now, q.Result.WaitingSince),
 			Reason: q.Result.Reason, Action: q.Result.Action, Also: q.Result.Also, Notes: notes(q.Result.Notes),
@@ -200,12 +209,25 @@ func (s *Server) groupRows(rows []store.QueueRow) map[classify.Bucket][]rowView 
 		if rec.Milestone != nil {
 			rv.Milestone = rec.Milestone.Title
 		}
+		if q.Snoozed(now) {
+			rv.Snoozed = s.snoozeLabel(q.Snooze)
+			snoozed = append(snoozed, rv)
+			continue
+		}
 		byBucket[bucket] = append(byBucket[bucket], rv)
 	}
 	for b := range byBucket {
 		slices.SortFunc(byBucket[b], func(x, y rowView) int { return classify.Compare(x.rank, y.rank) })
 	}
-	return byBucket
+	slices.SortFunc(snoozed, func(x, y rowView) int { return classify.Compare(x.rank, y.rank) })
+	return byBucket, snoozed
+}
+
+func (s *Server) snoozeLabel(sn *store.SnoozeRow) string {
+	if sn.Until == nil {
+		return "until it changes"
+	}
+	return "until " + sn.Until.In(s.o.Location).Format("Jan 2 15:04") + " or it changes"
 }
 
 // repoLinks lists each enabled repository once, with its action count across
@@ -216,8 +238,9 @@ func (s *Server) repoLinks(ctx context.Context, all []store.QueueRow, current st
 		return nil, err
 	}
 	actions := map[string]int{}
+	now := s.o.Now()
 	for _, r := range all {
-		if classify.Bucket(r.Result.Bucket).IsAction() {
+		if classify.Bucket(r.Result.Bucket).IsAction() && !r.Snoozed(now) {
 			actions[strings.ToLower(r.Owner+"/"+r.Name)]++
 		}
 	}

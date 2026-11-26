@@ -14,11 +14,17 @@
 
 {{define "prlink"}}{{if .URL}}<a href="{{.URL}}">{{.Repo}}#{{.Number}}</a>{{else}}{{.Repo}}#{{.Number}}{{end}}{{end}}
 
+{{define "pr-fields"}}<input type="hidden" name="repo_id" value="{{.RepoID}}"><input type="hidden" name="number" value="{{.Number}}"><input type="hidden" name="next" value="{{.Next}}">{{end}}
+
 {{define "row"}}<li class="item">
 <div class="item-main">
 <a class="item-title" href="{{.ExplainURL}}">{{.Title}}</a>
 <div class="item-sub">{{template "prlink" .}}{{if .Author}} · {{template "user" .Author}}{{end}} · {{.Age}}</div>
 <div class="item-reason">{{.Reason}}{{if .Action}} → <strong>{{.Action}}</strong>{{end}}</div>
+{{if .Snoozed}}<form method="post" action="/unsnooze" class="snooze-state">{{template "pr-fields" .}}<span class="muted small">Snoozed {{.Snoozed}}</span><button class="btn secondary sm" type="submit">Unsnooze</button></form>
+{{else if .Snoozable}}<details class="snooze"><summary>Snooze</summary><form method="post" action="/snooze" class="snooze-menu">{{template "pr-fields" .}}
+<button class="btn secondary sm" type="submit" name="for" value="change">Until it changes</button><button class="btn secondary sm" type="submit" name="for" value="1d">1 day</button><button class="btn secondary sm" type="submit" name="for" value="3d">3 days</button><button class="btn secondary sm" type="submit" name="for" value="7d">1 week</button>
+</form></details>{{end}}
 {{if or .Also .Notes}}<div class="item-also">{{if .Also}}<span>Also: {{join .Also ", "}}</span>{{end}}{{range .Notes}}<span class="note">{{if .URL}}<a href="{{.URL}}">{{.Text}}</a>{{else}}{{.Text}}{{end}}</span>{{end}}</div>{{end}}
 </div>
 <div class="item-meta">{{if .FirstTime}}<span class="pill">first-time</span>{{end}}{{if .Size}}<span class="tag" title="Size">{{.Size}}</span>{{end}}{{if .Milestone}}<span class="tag" title="Milestone">{{.Milestone}}</span>{{end}}<a class="tag" href="{{profile .Account}}" title="Account">@{{.Account}}</a></div>
@@ -34,6 +40,9 @@
 <ul class="items">{{range .Rows}}{{template "row" .}}{{end}}</ul>
 {{if .Handoff}}<div class="handoff"><code>{{.Handoff}}</code><button type="button" class="copy" data-copy="{{.Handoff}}">Copy</button></div>{{end}}
 </section>{{end}}
+{{if .Snoozed}}<details class="card bucket snoozed" id="snoozed"><summary class="card-head"><h2>Snoozed ({{len .Snoozed}})</h2><span class="muted small">Each returns when its time passes, its bucket changes, or new commits land.</span></summary>
+<ul class="items">{{range .Snoozed}}{{template "row" .}}{{end}}</ul>
+</details>{{end}}
 </div>
 <aside class="queue-side">
 <section class="card side-card tone-ok">

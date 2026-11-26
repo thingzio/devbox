@@ -28,16 +28,20 @@ type QueueRow struct {
 	Author  string
 	Result  ResultRow
 	Record  []byte
+	HeadOID string
+	Snooze  *SnoozeRow // nil when never snoozed; see Snoozed for whether it still applies
 }
 
 // Queue lists classified open PRs of enabled repositories.
 func (db *DB) Queue(ctx context.Context, f QueueFilter) ([]QueueRow, error) {
 	rows, err := db.r.QueryContext(ctx, `SELECT r.id, r.owner, r.name, a.login, p.number, p.title, p.url, p.author,
-  res.bucket, res.reason, res.action, res.waiting_since, res.also, res.notes, COALESCE(p.record, '')
+  res.bucket, res.reason, res.action, res.waiting_since, res.also, res.notes, COALESCE(p.record, ''),
+  COALESCE(p.head_oid, ''), s.bucket, s.head_oid, s.until_at
 FROM results res
 JOIN prs p ON p.repo_id = res.repo_id AND p.number = res.number
 JOIN repos r ON r.id = p.repo_id
 JOIN accounts a ON a.id = r.account_id
+LEFT JOIN snoozes s ON s.repo_id = p.repo_id AND s.number = p.number
 WHERE r.enabled = 1 AND p.state = 'open'
   AND (? = '' OR r.owner = ?) AND (? = '' OR r.name = ?) AND (? = '' OR a.login = ?) AND (? = '' OR res.bucket = ?)
 ORDER BY r.owner, r.name, p.number, a.login`,
@@ -49,11 +53,16 @@ ORDER BY r.owner, r.name, p.number, a.login`,
 	var out []QueueRow
 	for rows.Next() {
 		var q QueueRow
-		var since sql.NullInt64
+		var since, snoozeUntil sql.NullInt64
 		var also, notes, record string
+		var snoozeBucket, snoozeHead sql.NullString
 		if err := rows.Scan(&q.RepoID, &q.Owner, &q.Name, &q.Account, &q.Number, &q.Title, &q.URL, &q.Author,
-			&q.Result.Bucket, &q.Result.Reason, &q.Result.Action, &since, &also, &notes, &record); err != nil {
+			&q.Result.Bucket, &q.Result.Reason, &q.Result.Action, &since, &also, &notes, &record,
+			&q.HeadOID, &snoozeBucket, &snoozeHead, &snoozeUntil); err != nil {
 			return nil, err
+		}
+		if snoozeBucket.Valid {
+			q.Snooze = &SnoozeRow{Until: timePtr(snoozeUntil), Bucket: snoozeBucket.String, HeadOID: snoozeHead.String}
 		}
 		q.Result.WaitingSince = timePtr(since)
 		q.Result.Also, q.Result.Notes = decodeList(also), decodeList(notes)

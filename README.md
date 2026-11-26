@@ -54,6 +54,9 @@ DevBox starts on http://127.0.0.1:8484 and opens it in your default browser.
 3. **Open the Queue.** Tiles count each bucket and filter to it; the sidebar
    lists pull requests ready to merge and every repository you watch. Select a
    pull request's title to see why it is where it is.
+4. **Snooze** a pull request you cannot act on yet: for a day, three days, a
+   week, or until it changes. It returns early if it moves to another bucket or
+   gets new commits.
 
 If you use the maintainer-sweep skill, Settings offers its per-repository rule
 files (`~/.config/maintainer-sweep/repos/<owner>/<repo>.json`) for one-click
