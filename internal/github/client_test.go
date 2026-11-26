@@ -21,6 +21,7 @@ type harness struct {
 	sleeps []time.Duration
 	rates  []Rate
 	kinds  []string
+	costs  []string
 }
 
 func newHarness(t *testing.T, h http.HandlerFunc) *harness {
@@ -38,9 +39,10 @@ func newHarness(t *testing.T, h http.HandlerFunc) *harness {
 			hs.sleeps = append(hs.sleeps, d)
 			return ctx.Err()
 		},
-		OnRate:    func(r Rate) { hs.rates = append(hs.rates, r) },
-		OnRequest: func(kind string, status int) { hs.kinds = append(hs.kinds, fmt.Sprintf("%s:%d", kind, status)) },
-		Now:       func() time.Time { return harnessNow },
+		OnRate:        func(r Rate) { hs.rates = append(hs.rates, r) },
+		OnRequest:     func(kind string, status int) { hs.kinds = append(hs.kinds, fmt.Sprintf("%s:%d", kind, status)) },
+		Now:           func() time.Time { return harnessNow },
+		OnGraphQLCost: func(op string, cost int) { hs.costs = append(hs.costs, fmt.Sprintf("%s:%d", op, cost)) },
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -124,6 +126,23 @@ func TestGraphQLRefusesWrites(t *testing.T) {
 	}
 	if out.Viewer.Login != "me" {
 		t.Fatalf("decoded %+v", out)
+	}
+}
+
+func TestGraphQLReportsQueryCost(t *testing.T) {
+	hs := newHarness(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"data":{"rateLimit":{"cost":3,"remaining":4990},"x":1}}`)
+	})
+	var out struct{ X int }
+	if err := hs.client.GraphQL(context.Background(), "Fingerprints", "query Fingerprints { rateLimit { cost } x }", nil, &out); err != nil || out.X != 1 {
+		t.Fatalf("GraphQL = %+v, %v", out, err)
+	}
+	hs2 := newHarness(t, func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, `{"data":{"x":1}}`) })
+	if err := hs2.client.GraphQL(context.Background(), "Q", "query Q { x }", nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if len(hs.costs) != 1 || hs.costs[0] != "Fingerprints:3" || len(hs2.costs) != 0 {
+		t.Fatalf("costs = %v / %v", hs.costs, hs2.costs)
 	}
 }
 

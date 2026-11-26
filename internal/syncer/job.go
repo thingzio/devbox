@@ -68,17 +68,21 @@ func (e *Engine) RunJob(ctx context.Context, w store.Work) {
 	src, err := e.d.Sources(w.Account)
 	if err != nil {
 		e.tokenUnavailable(ctx, w.Account, err)
+		e.enriched("deferred")
 		return
 	}
+	start := e.now()
 	out := src.Collect(ctx, collect.Input{
 		RepoID: w.RepoID, Owner: w.Owner, Name: w.Name, Viewer: w.Account, Number: w.Number, Rules: w.Rules,
 		QueuedFingerprint: w.Fingerprint, HeadChangedAt: w.HeadChangedAt, Now: e.now(),
 	})
+	now := e.now()
+	e.d.Metrics.EnrichDuration.Observe(now.Sub(start).Seconds())
 	if ctx.Err() != nil {
 		log.Debug("enrichment cancelled")
+		e.enriched("cancelled")
 		return
 	}
-	now := e.now()
 	switch out.Kind {
 	case collect.Mismatch:
 		err := e.d.Store.CommitObservation(ctx, store.DetailObservation{
@@ -88,17 +92,20 @@ func (e *Engine) RunJob(ctx context.Context, w store.Work) {
 		switch {
 		case errors.Is(err, store.ErrStale):
 			log.Debug("detail observation discarded: newer revision")
+			e.enriched("stale")
 		case err != nil:
 			log.Error("commit detail observation", "err", err)
 		default:
 			log.Debug("detail observation committed", "head", out.HeadOID)
+			e.enriched("mismatch")
 			signal(e.wake)
 		}
 	case collect.Collected:
-		e.commitRecord(ctx, log, w, out.Record, out.Caches, now, true, "", out.RetryableEvidence)
+		e.commitRecord(ctx, log, w, out.Record, out.Caches, now, true, "", out.RetryableEvidence, "collected")
 	case collect.Failed:
 		if e.accountBlocked(ctx, w.Account, out.Err) {
 			log.Info("enrichment deferred: account blocked", "err", out.Err)
+			e.enriched("deferred")
 			return
 		}
 		msg := out.Err.Error()
@@ -109,13 +116,13 @@ func (e *Engine) RunJob(ctx context.Context, w store.Work) {
 					since = prior.CoreRetry.Since
 				}
 				prior.CoreRetry = &classify.CoreRetry{Message: msg, Since: since}
-				e.commitRecord(ctx, log, w, prior, store.Caches{}, now, false, msg, true)
+				e.commitRecord(ctx, log, w, prior, store.Caches{}, now, false, msg, true, "failed")
 				return
 			}
 		}
 		rec := out.Record
 		rec.Number, rec.Version, rec.CollectionRulesHash, rec.Error = w.Number, classify.RecordVersion, w.Rules.CollectionHash(), msg
-		e.commitRecord(ctx, log, w, rec, out.Caches, now, false, msg, out.Retryable)
+		e.commitRecord(ctx, log, w, rec, out.Caches, now, false, msg, out.Retryable, "failed")
 	}
 }
 
@@ -136,7 +143,7 @@ func (e *Engine) usablePrior(w store.Work, now time.Time) (classify.Record, bool
 }
 
 func (e *Engine) commitRecord(ctx context.Context, log *slog.Logger, w store.Work, rec classify.Record, caches store.Caches,
-	now time.Time, advance bool, errMsg string, retry bool) {
+	now time.Time, advance bool, errMsg string, retry bool, outcome string) {
 	res := classify.Classify(rec, w.Rules, w.Account, now)
 	data, err := json.Marshal(rec)
 	if err != nil {
@@ -157,6 +164,7 @@ func (e *Engine) commitRecord(ctx context.Context, log *slog.Logger, w store.Wor
 	switch {
 	case errors.Is(err, store.ErrStale):
 		log.Debug("enrichment discarded: newer revision or lifecycle change")
+		e.enriched("stale")
 		return
 	case err != nil:
 		if ctx.Err() == nil {
@@ -165,8 +173,11 @@ func (e *Engine) commitRecord(ctx context.Context, log *slog.Logger, w store.Wor
 		return
 	}
 	log.Debug("enrichment committed", "head", rec.HeadOID, "bucket", res.Bucket, "retry_at", c.RetryAt, "error", errMsg)
+	e.enriched(outcome)
 	e.published(log, w.RepoID, w.Number, tr)
 }
+
+func (e *Engine) enriched(outcome string) { e.d.Metrics.Enrichments.WithLabelValues(outcome).Inc() }
 
 func resultRow(r classify.Result) store.ResultRow {
 	return store.ResultRow{Bucket: string(r.Bucket), Reason: r.Reason, Action: r.Action, WaitingSince: r.WaitingSince, Also: r.Also, Notes: r.Notes}

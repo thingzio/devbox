@@ -294,9 +294,11 @@ func (e *Engine) Pauses() map[string]Pause {
 // re-authentication; anything else, such as a locked keychain, pauses briefly.
 func (e *Engine) tokenUnavailable(ctx context.Context, account string, err error) {
 	if errors.Is(err, ErrNoToken) {
+		e.d.Metrics.TokenErrors.WithLabelValues("missing").Inc()
 		e.accountBlocked(ctx, account, err)
 		return
 	}
+	e.d.Metrics.TokenErrors.WithLabelValues("unavailable").Inc()
 	e.d.Log.Warn("account token unavailable; retrying", "account", account, "err", err, "retry_in", tokenRetry)
 	e.pauseUntil(account, e.now().Add(tokenRetry), "token unavailable: "+err.Error())
 }

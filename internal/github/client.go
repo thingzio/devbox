@@ -46,6 +46,8 @@ type Options struct {
 	OnRate     func(Rate)
 	OnRequest  func(kind string, status int)
 	Now        func() time.Time
+	// OnGraphQLCost receives each query's rateLimit.cost when the query selects it.
+	OnGraphQLCost func(operation string, cost int)
 }
 
 // Client performs read-only GitHub API calls with bounded retries.
@@ -59,6 +61,7 @@ type Client struct {
 	onRate    func(Rate)
 	onRequest func(string, int)
 	now       func() time.Time
+	onCost    func(string, int)
 }
 
 // New validates options and returns a Client.
@@ -76,7 +79,7 @@ func New(o Options) (*Client, error) {
 	}
 	c := &Client{
 		api: u, token: o.Token, userAgent: o.UserAgent, hc: o.HTTPClient, log: o.Logger,
-		sleep: o.Sleep, onRate: o.OnRate, onRequest: o.OnRequest, now: o.Now,
+		sleep: o.Sleep, onRate: o.OnRate, onRequest: o.OnRequest, now: o.Now, onCost: o.OnGraphQLCost,
 	}
 	if c.now == nil {
 		c.now = time.Now

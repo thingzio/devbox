@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/thingzio/devbox/internal/classify"
 	"github.com/thingzio/devbox/internal/collect"
 	"github.com/thingzio/devbox/internal/github"
@@ -25,6 +26,10 @@ func (en *env) dispatch() int {
 	}
 	en.eng.Wait()
 	return n
+}
+
+func (en *env) outcomes(outcome string) float64 {
+	return testutil.ToFloat64(en.eng.d.Metrics.Enrichments.WithLabelValues(outcome))
 }
 
 func (en *env) observeAndEnrich(observed ...collect.Observed) {
@@ -52,6 +57,9 @@ func TestDispatchCommitsCollectedRecords(t *testing.T) {
 	trs := en.transitions(1)
 	if len(trs) != 1 || trs[0].From != nil || trs[0].To != string(classify.NeedsInitialReview) {
 		t.Fatalf("transitions = %+v", trs)
+	}
+	if en.outcomes("collected") != 1 || testutil.CollectAndCount(en.eng.d.Metrics.EnrichDuration) != 1 {
+		t.Fatalf("collected = %v", en.outcomes("collected"))
 	}
 }
 
@@ -95,6 +103,9 @@ func TestMismatchCommitsObservationAndRedispatchesOnce(t *testing.T) {
 	}
 	if started := en.dispatch(); started != 0 || en.src.calls(1) != 2 {
 		t.Fatalf("detail reads repeated: started %d calls %d", started, en.src.calls(1))
+	}
+	if en.outcomes("mismatch") != 1 || en.outcomes("collected") != 1 {
+		t.Fatalf("outcomes mismatch %v collected %v", en.outcomes("mismatch"), en.outcomes("collected"))
 	}
 }
 
@@ -146,6 +157,9 @@ func TestNonRetryableFatalIsUnclassifiedWithoutFastRetry(t *testing.T) {
 	var rec classify.Record
 	if err := json.Unmarshal(d.Record, &rec); err != nil || rec.Version != classify.RecordVersion || rec.CollectionRulesHash == "" {
 		t.Fatalf("error record = %+v, %v", rec, err)
+	}
+	if en.outcomes("failed") != 1 {
+		t.Fatalf("failed = %v", en.outcomes("failed"))
 	}
 }
 
@@ -229,6 +243,13 @@ func TestLateCompletionIsDiscarded(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			want := "stale"
+			if lifecycle == "close" {
+				want = "cancelled"
+			}
+			if en.outcomes(want) != 1 {
+				t.Fatalf("%s outcomes = %v", want, en.outcomes(want))
+			}
 			if lifecycle == "delete" {
 				if len(details) != 0 {
 					t.Fatalf("late completion recreated a deleted repo's PR: %+v", details)
@@ -259,6 +280,9 @@ func TestBlockedAccountLeavesWorkPending(t *testing.T) {
 	}
 	if started := en.dispatch(); started != 0 {
 		t.Fatalf("dispatched %d jobs for a needs_auth account", started)
+	}
+	if en.outcomes("deferred") != 1 {
+		t.Fatalf("deferred = %v", en.outcomes("deferred"))
 	}
 }
 
@@ -293,6 +317,9 @@ func TestUnavailableTokenPausesWithoutMarkingNeedsAuth(t *testing.T) {
 	}
 	if _, ok := en.eng.Pauses()["me"]; !ok {
 		t.Fatal("account not paused")
+	}
+	if en.outcomes("deferred") != 1 || testutil.ToFloat64(en.eng.d.Metrics.TokenErrors.WithLabelValues("unavailable")) != 1 {
+		t.Fatal("token failure not counted")
 	}
 	en.srcErr = nil
 	en.clock.Advance(time.Minute)

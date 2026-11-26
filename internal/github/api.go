@@ -57,6 +57,16 @@ func (c *Client) GraphQL(ctx context.Context, op, query string, vars map[string]
 	if err := json.Unmarshal(env.Data, out); err != nil {
 		return fmt.Errorf("github: graphql %s: decode: %w", op, err)
 	}
+	if c.onCost != nil {
+		var rl struct {
+			RateLimit *struct {
+				Cost int `json:"cost"`
+			} `json:"rateLimit"`
+		}
+		if json.Unmarshal(env.Data, &rl) == nil && rl.RateLimit != nil {
+			c.onCost(op, rl.RateLimit.Cost)
+		}
+	}
 	return nil
 }
 

@@ -135,7 +135,7 @@ func Run(ctx context.Context, cfg Config) error {
 	newClient := func(token, account string) (*github.Client, error) {
 		return github.New(github.Options{
 			APIURL: cfg.GitHubAPIURL, Token: token, UserAgent: "devbox/" + version.Version, Logger: log,
-			OnRequest: m.ObserveRequest,
+			OnRequest: m.ObserveRequest, OnGraphQLCost: m.ObserveGraphQLCost,
 			OnRate: func(r github.Rate) {
 				if account != "" {
 					engine.ObserveRate(account, r)
@@ -161,6 +161,7 @@ func Run(ctx context.Context, cfg Config) error {
 		ecfg.PollInterval = syncer.DefaultPollInterval
 	}
 	engine = syncer.New(ecfg, syncer.Deps{Store: db, Hub: h, Metrics: m, Log: log, Sources: sources})
+	metrics.RegisterStateGauges(reg, func() int { return len(engine.Pauses()) }, h.Subscribers)
 
 	mgrCtx, cancelMgr := context.WithCancel(context.Background())
 	defer cancelMgr()
