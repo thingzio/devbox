@@ -65,7 +65,7 @@ func serve(args []string, stderr io.Writer) int {
 	dbPath := fs.String("db", defaultDBPath(), "SQLite database path")
 	poll := fs.String("poll-interval", syncer.DefaultPolling().String(), "default repository check interval, 1m to 15m, or manual; Settings can override it")
 	debug := fs.Bool("debug", false, "log at debug level, including every GitHub request")
-	logFormat := fs.String("log-format", "auto", "log format: auto, text, or json")
+	logFormat := fs.String("log-format", "auto", "log format: auto (pretty on a terminal, json otherwise), pretty, text (full key=value), or json")
 	allowRemote := fs.Bool("allow-remote", false, "allow a non-loopback --addr")
 	noBrowser := fs.Bool("no-browser", false, "do not open the UI in the default browser on start")
 	apiURL := fs.String("github-api-url", github.DefaultAPIURL, "GitHub API base URL")

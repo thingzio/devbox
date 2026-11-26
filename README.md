@@ -95,7 +95,7 @@ watched by one of them, and the queue shows them all.
 
 ```
 devbox serve [--addr 127.0.0.1:8484] [--db PATH] [--poll-interval 2m|1m..15m|manual]
-             [--debug] [--log-format auto|text|json] [--allow-remote] [--no-browser]
+             [--debug] [--log-format auto|pretty|text|json] [--allow-remote] [--no-browser]
 devbox version
 ```
 
@@ -106,7 +106,7 @@ devbox version
 | `--poll-interval` | `2m` | How often repositories are checked: 1m to 15m, or `manual` to check only when you press Refresh. Settings → Polling can override it. |
 | `--no-browser` | off | Don't open the queue in the default browser on start; the URL is logged either way. |
 | `--debug` | off | Log every GitHub request (never tokens, bodies, or diffs). |
-| `--log-format` | `auto` | `text`, `json`, or `auto` (text on a terminal, JSON otherwise). |
+| `--log-format` | `auto` | `pretty` (short lines, colored by level: info green, warnings blue, errors red), `text` (the full `key=value` record with level and time), `json`, or `auto` (pretty on a terminal, JSON otherwise). Set `NO_COLOR` to turn colors off. |
 | `--allow-remote` | off | Accept connections from other machines. DevBox prints a URL with a one-time access token at startup; open it once to get a session cookie, which lasts until DevBox restarts. Traffic is plain HTTP, so use TLS (an SSH tunnel or a proxy) on networks you do not trust. |
 
 ## Privacy and security
