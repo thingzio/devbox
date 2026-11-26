@@ -262,6 +262,23 @@ func TestBlockedAccountLeavesWorkPending(t *testing.T) {
 	}
 }
 
+func TestSecondaryRateLimitPausesInsteadOfFailingThePR(t *testing.T) {
+	en := newEnv(t, Config{})
+	en.src.set(func(f *fakeSource) {
+		f.outcome = func(_ context.Context, in collect.Input) collect.Outcome {
+			err := &github.StatusError{Status: 403, Message: "You have exceeded a secondary rate limit", RateLimited: true, Reset: t0.Add(time.Minute)}
+			return collect.Outcome{Kind: collect.Failed, Err: err, Retryable: true, Record: classify.Record{Number: in.Number}}
+		}
+	})
+	en.observeAndEnrich(obs(1, "a"))
+	if d := en.detail(1); d.Result != nil || d.Error != "" || d.RetryAt == nil {
+		t.Fatalf("secondary limit was committed as a PR failure: %+v", d)
+	}
+	if p, ok := en.eng.Pauses()["me"]; !ok || !p.Until.Equal(t0.Add(time.Minute)) {
+		t.Fatalf("pauses = %v", en.eng.Pauses())
+	}
+}
+
 func TestUnavailableTokenPausesWithoutMarkingNeedsAuth(t *testing.T) {
 	en := newEnv(t, Config{})
 	en.src.set(func(f *fakeSource) { f.observed = []collect.Observed{obs(1, "a")} })

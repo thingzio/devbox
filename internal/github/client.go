@@ -45,6 +45,7 @@ type Options struct {
 	Sleep      func(context.Context, time.Duration) error
 	OnRate     func(Rate)
 	OnRequest  func(kind string, status int)
+	Now        func() time.Time
 }
 
 // Client performs read-only GitHub API calls with bounded retries.
@@ -57,6 +58,7 @@ type Client struct {
 	sleep     func(context.Context, time.Duration) error
 	onRate    func(Rate)
 	onRequest func(string, int)
+	now       func() time.Time
 }
 
 // New validates options and returns a Client.
@@ -74,7 +76,10 @@ func New(o Options) (*Client, error) {
 	}
 	c := &Client{
 		api: u, token: o.Token, userAgent: o.UserAgent, hc: o.HTTPClient, log: o.Logger,
-		sleep: o.Sleep, onRate: o.OnRate, onRequest: o.OnRequest,
+		sleep: o.Sleep, onRate: o.OnRate, onRequest: o.OnRequest, now: o.Now,
+	}
+	if c.now == nil {
+		c.now = time.Now
 	}
 	if c.userAgent == "" {
 		c.userAgent = "devbox"
@@ -181,7 +186,7 @@ func (c *Client) once(ctx context.Context, rq request, attempt int) (*response, 
 		return nil, fmt.Errorf("github: response for %s exceeds %d bytes", rq.label, maxBodyBytes)
 	}
 	if resp.StatusCode >= 300 {
-		return nil, statusError(resp, data)
+		return nil, statusError(resp, data, c.now())
 	}
 	return &response{header: resp.Header, body: data}, nil
 }

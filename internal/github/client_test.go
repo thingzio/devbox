@@ -12,6 +12,8 @@ import (
 	"time"
 )
 
+var harnessNow = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+
 type harness struct {
 	client *Client
 	server *httptest.Server
@@ -38,6 +40,7 @@ func newHarness(t *testing.T, h http.HandlerFunc) *harness {
 		},
 		OnRate:    func(r Rate) { hs.rates = append(hs.rates, r) },
 		OnRequest: func(kind string, status int) { hs.kinds = append(hs.kinds, fmt.Sprintf("%s:%d", kind, status)) },
+		Now:       func() time.Time { return harnessNow },
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -223,9 +226,31 @@ func TestStatusErrorsAreTyped(t *testing.T) {
 					t.Fatalf("err = %v reset = %v", err, reset)
 				}
 			}},
-		{"long retry-after is deferred", 403, map[string]string{"Retry-After": "120"}, `{"message":"secondary"}`, 1,
+		{"long retry-after is deferred and pauses", 403, map[string]string{"Retry-After": "120"}, `{"message":"secondary"}`, 1,
 			func(t *testing.T, err error) {
-				if !Retryable(err) {
+				reset, ok := RateLimitReset(err)
+				if !Retryable(err) || !ok || !reset.Equal(harnessNow.Add(120*time.Second)) {
+					t.Fatalf("err = %v reset = %v %v", err, reset, ok)
+				}
+			}},
+		{"secondary rate limit without retry-after pauses a minute", 403, map[string]string{"X-RateLimit-Remaining": "4000"},
+			`{"message":"You have exceeded a secondary rate limit. Please wait a few minutes before you try again."}`, 1,
+			func(t *testing.T, err error) {
+				reset, ok := RateLimitReset(err)
+				if !Retryable(err) || !ok || !reset.Equal(harnessNow.Add(time.Minute)) {
+					t.Fatalf("err = %v reset = %v %v", err, reset, ok)
+				}
+			}},
+		{"429 without headers pauses a minute", 429, nil, `{"message":"too many"}`, 1,
+			func(t *testing.T, err error) {
+				reset, ok := RateLimitReset(err)
+				if !Retryable(err) || !ok || !reset.Equal(harnessNow.Add(time.Minute)) {
+					t.Fatalf("err = %v reset = %v %v", err, reset, ok)
+				}
+			}},
+		{"plain 403 is final", 403, nil, `{"message":"Resource not accessible by integration"}`, 1,
+			func(t *testing.T, err error) {
+				if _, ok := RateLimitReset(err); ok || Retryable(err) {
 					t.Fatalf("err = %v", err)
 				}
 			}},

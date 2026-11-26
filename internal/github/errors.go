@@ -101,18 +101,24 @@ func Retryable(err error) bool {
 	return false
 }
 
-// RateLimitReset returns when an exhausted primary rate limit resets.
+// RateLimitReset returns when the account may read again after a rate limit
+// that should pause it: an exhausted primary limit, a secondary limit, or a
+// Retry-After too long to wait out inside one call.
 func RateLimitReset(err error) (time.Time, bool) {
 	var se *StatusError
-	if errors.As(err, &se) && se.RateLimited {
+	if errors.As(err, &se) && (se.RateLimited || se.RetryAfter > maxRetryAfter) {
 		return se.Reset, true
 	}
 	return time.Time{}, false
 }
 
+// secondaryWait is GitHub's documented minimum wait after a secondary rate
+// limit response that carries no Retry-After header.
+const secondaryWait = time.Minute
+
 var oauthRestricted = regexp.MustCompile("the `([^`]+)` organization has enabled OAuth App access restrictions")
 
-func statusError(resp *http.Response, body []byte) error {
+func statusError(resp *http.Response, body []byte, now time.Time) error {
 	msg := apiMessage(body)
 	switch resp.StatusCode {
 	case http.StatusUnauthorized:
@@ -127,11 +133,13 @@ func statusError(resp *http.Response, body []byte) error {
 	}
 	se := &StatusError{Status: resp.StatusCode, Message: msg}
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusTooManyRequests {
-		if d := parseRetryAfter(resp.Header.Get("Retry-After")); d > 0 {
-			se.RetryAfter = d
-		} else if resp.Header.Get("X-RateLimit-Remaining") == "0" {
-			se.RateLimited = true
-			se.Reset = resetTime(resp.Header)
+		switch d := parseRetryAfter(resp.Header.Get("Retry-After"), now); {
+		case d > 0:
+			se.RetryAfter, se.Reset = d, now.Add(d)
+		case resp.Header.Get("X-RateLimit-Remaining") == "0":
+			se.RateLimited, se.Reset = true, resetTime(resp.Header)
+		case resp.StatusCode == http.StatusTooManyRequests || strings.Contains(strings.ToLower(msg), "secondary rate limit"):
+			se.RateLimited, se.Reset = true, now.Add(secondaryWait)
 		}
 	}
 	return se
@@ -185,7 +193,7 @@ func apiMessage(body []byte) string {
 	return s
 }
 
-func parseRetryAfter(v string) time.Duration {
+func parseRetryAfter(v string, now time.Time) time.Duration {
 	if v == "" {
 		return 0
 	}
@@ -193,7 +201,7 @@ func parseRetryAfter(v string) time.Duration {
 		return time.Duration(secs) * time.Second
 	}
 	if t, err := http.ParseTime(v); err == nil {
-		if d := time.Until(t); d > 0 {
+		if d := t.Sub(now); d > 0 {
 			return d
 		}
 	}
