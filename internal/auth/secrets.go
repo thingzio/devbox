@@ -15,7 +15,7 @@ import (
 // IDs are public by design (no client secret is involved), so it ships in
 // source; -ldflags "-X github.com/thingzio/devbox/internal/auth.DefaultClientID=..."
 // replaces it in a custom build.
-var DefaultClientID = "Ov23liw9A5EWYD03CV53"
+var DefaultClientID = "Iv23liY3vMIWTHYgjIHn"
 
 // ClientIDEnv overrides DefaultClientID.
 const ClientIDEnv = "DEVBOX_GITHUB_CLIENT_ID"

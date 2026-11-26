@@ -129,9 +129,9 @@ func TestClientID(t *testing.T) {
 	}
 }
 
-func TestClientIDDefaultsToTheThingzioApp(t *testing.T) {
+func TestClientIDDefaultsToTheThingzioGitHubApp(t *testing.T) {
 	t.Setenv(ClientIDEnv, "")
-	if got := ClientID(); got != "Ov23liw9A5EWYD03CV53" {
-		t.Fatalf("ClientID = %q, want the thingzio OAuth App", got)
+	if got := ClientID(); got != "Iv23liY3vMIWTHYgjIHn" {
+		t.Fatalf("ClientID = %q, want the thingzio GitHub App", got)
 	}
 }
