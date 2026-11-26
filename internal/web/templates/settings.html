@@ -16,8 +16,8 @@
 <h3>Add an account</h3>
 {{if .ClientIDConfigured}}<div id="device"><button class="btn" type="button" hx-post="/accounts/device" hx-target="#device" hx-swap="innerHTML">Sign in with GitHub</button></div>
 <div class="or-divider">or</div>
-{{else}}<p class="muted small">Device sign-in needs an OAuth client ID (set <code>DEVBOX_GITHUB_CLIENT_ID</code>); add a classic token instead.</p>{{end}}
-<form method="post" action="/accounts/pat" class="row"><label class="field grow"><span class="field-cap">Classic token</span><input type="password" name="token" autocomplete="off" required></label><button class="btn" type="submit">Add token</button></form>
+{{else}}<p class="muted small">Device sign-in needs a GitHub App client ID (set <code>DEVBOX_GITHUB_CLIENT_ID</code>); add a classic token instead.</p>{{end}}
+<form method="post" action="/accounts/pat" class="row"><label class="field grow"><span class="field-cap">Classic token</span><input type="password" name="token" autocomplete="off" placeholder="ghp_… with the repo and read:org scopes" required></label><button class="btn" type="submit">Add token</button></form>
 </section>
 
 <section id="repos" class="card"><div class="card-head"><h2>Repositories</h2><span class="muted small">{{len .Repos}} monitored</span></div>

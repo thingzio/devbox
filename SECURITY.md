@@ -68,7 +68,7 @@ The following are **not** vulnerabilities in DevBox:
 - GitHub access is read-only. Sign-in uses a GitHub App whose permissions are
   all read-only, so GitHub enforces it; its user tokens expire after 8 hours
   and are renewed with a single-use refresh token kept in the keychain. Classic
-  tokens are validated for the `repo` scope, which GitHub cannot narrow to
+  tokens are validated for the `repo` and `read:org` scopes; `repo` cannot be narrowed to
   reads, so for them read-only is DevBox's own guarantee.
 - Tokens live in the OS keychain, never in the SQLite database, and are never
   logged, including authorization headers, device codes, pull request and

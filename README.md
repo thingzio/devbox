@@ -48,7 +48,7 @@ devbox serve
 DevBox starts on http://127.0.0.1:8484 and opens it in your default browser.
 
 1. **Add an account** in Settings: sign in with GitHub, or paste a classic
-   personal access token with the `repo` scope.
+   personal access token with the `repo` and `read:org` scopes.
 2. **Add the repositories you maintain**: `owner/name` or any GitHub URL inside
    the repository.
 3. **Open the Queue.** Tiles count each bucket and filter to it; the sidebar
@@ -66,7 +66,9 @@ import.
   Install the app on each organization or account whose repositories you
   watch (an organization owner may need to approve it). Its tokens expire after
   8 hours and DevBox renews them; if renewal fails, sign in again.
-- **Classic token**: a classic personal access token with the `repo` scope.
+- **Classic token**: a classic personal access token with the `repo` and
+  `read:org` scopes (`read:org` lets DevBox see review requests sent to your
+  teams).
   Classic scopes cannot be read-only, so prefer signing in with GitHub.
   Fine-grained tokens are not supported.
 - **Organizations with SAML SSO** also need the token authorized for SSO. When

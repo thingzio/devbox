@@ -17,14 +17,22 @@ import (
 
 // Token validation errors.
 var (
-	ErrFineGrained  = errors.New("fine-grained tokens are not supported; sign in with GitHub, or use a classic token with the repo scope")
-	ErrMissingScope = errors.New("the token lacks the repo scope")
+	ErrFineGrained  = errors.New("fine-grained tokens are not supported; sign in with GitHub, or use a classic token with the repo and read:org scopes")
+	ErrMissingScope = errors.New("the token needs the repo and read:org scopes")
 )
 
 // Identity is a token's owner and granted scopes.
 type Identity struct {
 	Login  string
 	Scopes []string
+}
+
+// hasRequiredScopes reports whether a scoped token can read repositories and
+// team membership: repo, plus read:org or a scope that includes it (team
+// review requests otherwise look like non-membership).
+func hasRequiredScopes(scopes []string) bool {
+	return slices.Contains(scopes, "repo") &&
+		slices.ContainsFunc(scopes, func(s string) bool { return s == "read:org" || s == "write:org" || s == "admin:org" })
 }
 
 // gitHubAppUserToken reports whether a token is a GitHub App user token
@@ -193,7 +201,7 @@ func (m *Manager) complete(ctx context.Context, cred Credential, kind string) (s
 	if err != nil {
 		return store.Account{}, fmt.Errorf("auth: verify token: %w", err)
 	}
-	if !gitHubAppUserToken(cred.AccessToken) && !slices.Contains(id.Scopes, "repo") {
+	if !gitHubAppUserToken(cred.AccessToken) && !hasRequiredScopes(id.Scopes) {
 		return store.Account{}, ErrMissingScope
 	}
 	if err := m.o.Secrets.Set(id.Login, cred.encode()); err != nil {

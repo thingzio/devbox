@@ -133,7 +133,7 @@ func TestAccountFlows(t *testing.T) {
 		t.Fatalf("account survived removal: %+v", accounts)
 	}
 	ts.setScopes("read:org")
-	if code, body, _ := ts.post("/accounts/pat", url.Values{"token": {"ghp_noscope"}}); code != http.StatusUnprocessableEntity || !strings.Contains(body, "repo scope") {
+	if code, body, _ := ts.post("/accounts/pat", url.Values{"token": {"ghp_noscope"}}); code != http.StatusUnprocessableEntity || !strings.Contains(body, "repo and read:org scopes") {
 		t.Fatalf("missing scope = %d\n%s", code, body)
 	}
 }
@@ -328,4 +328,10 @@ func TestRevokeLinkMatchesTheCredential(t *testing.T) {
 			assertContains(t, "settings", body, tc.want)
 		})
 	}
+}
+
+func TestClassicTokenFieldNamesItsScopes(t *testing.T) {
+	ts := newTestServer(t)
+	_, body := ts.get("/settings")
+	assertContains(t, "settings", body, `placeholder="ghp_… with the repo and read:org scopes"`)
 }

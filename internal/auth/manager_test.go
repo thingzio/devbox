@@ -140,7 +140,7 @@ func TestDeviceFlowAddsAccount(t *testing.T) {
 
 func TestRemove(t *testing.T) {
 	ctx := context.Background()
-	env := newManagerEnv(t, "repo", nil)
+	env := newManagerEnv(t, "repo, read:org", nil)
 	if _, err := env.mgr.AddPAT(ctx, "ghp_x"); err != nil {
 		t.Fatal(err)
 	}
@@ -212,5 +212,28 @@ func TestOAuthAppDeviceTokenStillNeedsRepo(t *testing.T) {
 			t.Fatalf("OAuth App token without scopes accepted: %+v", view)
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestScopedTokensNeedReadOrg(t *testing.T) {
+	cases := []struct {
+		scopes string
+		ok     bool
+	}{
+		{"repo, read:org", true},
+		{"repo, write:org", true},
+		{"admin:org, repo", true},
+		{"repo", false},
+		{"repo, notifications", false},
+		{"read:org", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.scopes, func(t *testing.T) {
+			env := newManagerEnv(t, tc.scopes, nil)
+			_, err := env.mgr.AddPAT(context.Background(), "ghp_x")
+			if tc.ok != (err == nil) || (!tc.ok && !errors.Is(err, ErrMissingScope)) {
+				t.Fatalf("AddPAT with %q = %v", tc.scopes, err)
+			}
+		})
 	}
 }
