@@ -3,10 +3,12 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/syncer"
 )
 
@@ -174,11 +176,49 @@ func TestUsernamesLinkToGitHub(t *testing.T) {
 	ts.repo(work, "o", "r")
 	ts.seed(ts.repo(me, "o", "r"), 1, "One", "https://github.com/o/r/pull/1", "waiting_on_me", `{}`)
 	_, body := ts.get("/")
-	assertContains(t, "queue", body, `<a href="https://github.com/alice">@alice</a>`, `<a class="tag" href="https://github.com/me" title="Account">@me</a>`)
+	assertContains(t, "queue", body, `<a href="https://github.com/alice" target="_blank" rel="noopener noreferrer">@alice</a>`, `<a class="tag" href="https://github.com/me" title="Account" target="_blank" rel="noopener noreferrer">@me</a>`)
 	_, body = ts.get("/r/o/r")
-	assertContains(t, "repo page", body, `<a href="https://github.com/me">@me</a>, <a href="https://github.com/work">@work</a>`)
+	assertContains(t, "repo page", body, `<a href="https://github.com/me" target="_blank" rel="noopener noreferrer">@me</a>, <a href="https://github.com/work" target="_blank" rel="noopener noreferrer">@work</a>`)
 	_, body = ts.get("/r/o/r/1")
-	assertContains(t, "explain page", body, `<a href="https://github.com/me">@me</a>`)
+	assertContains(t, "explain page", body, `<a href="https://github.com/me" target="_blank" rel="noopener noreferrer">@me</a>`)
 	_, body = ts.get("/settings")
-	assertContains(t, "settings", body, `<a href="https://github.com/work"><strong>@work</strong></a>`)
+	assertContains(t, "settings", body, `<a href="https://github.com/work" target="_blank" rel="noopener noreferrer"><strong>@work</strong></a>`)
+}
+
+var anchorTag = regexp.MustCompile(`<a [^>]*>`)
+var anchorHref = regexp.MustCompile(`href="([^"]*)"`)
+
+// TestExternalLinksOpenInANewTab keeps DevBox open: every link that leaves it
+// opens a new tab without handing GitHub a window reference, and DevBox's own
+// links stay in the tab.
+func TestExternalLinksOpenInANewTab(t *testing.T) {
+	ts := newTestServer(t)
+	r := ts.repo(ts.account("me"), "o", "r")
+	ts.seed(r, 1, "Title", "https://github.com/o/r/pull/1", "needs_initial_review", `{}`)
+	if _, err := ts.db.RecordPoll(ts.ctx, r.ID, t0, errorString((&github.SSORequiredError{URL: "https://github.com/orgs/o/sso"}).Error())); err != nil {
+		t.Fatal(err)
+	}
+	external := 0
+	for _, path := range []string{"/", "/r/o/r", "/r/o/r/1", "/settings"} {
+		_, body := ts.get(path)
+		for _, tag := range anchorTag.FindAllString(body, -1) {
+			m := anchorHref.FindStringSubmatch(tag)
+			if m == nil {
+				continue
+			}
+			newTab := strings.Contains(tag, `target="_blank"`) && strings.Contains(tag, `rel="noopener noreferrer"`)
+			switch {
+			case strings.HasPrefix(m[1], "https://"):
+				external++
+				if !newTab {
+					t.Errorf("%s: external link stays in the tab: %s", path, tag)
+				}
+			case strings.Contains(tag, `target=`):
+				t.Errorf("%s: DevBox link opens a new tab: %s", path, tag)
+			}
+		}
+	}
+	if external < 8 {
+		t.Fatalf("checked only %d external links; the pages did not render what this test expects", external)
+	}
 }

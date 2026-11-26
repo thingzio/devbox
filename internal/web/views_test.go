@@ -315,7 +315,7 @@ func TestStatusBarLinksSSOAuthorization(t *testing.T) {
 		name, err, link string
 	}{
 		{"github sso link", (&github.SSORequiredError{URL: "https://github.com/enterprises/acme/sso?authorization_request=abc"}).Error(),
-			`<a href="https://github.com/enterprises/acme/sso?authorization_request=abc">Authorize for SSO</a>`},
+			`<a href="https://github.com/enterprises/acme/sso?authorization_request=abc" target="_blank" rel="noopener noreferrer">Authorize for SSO</a>`},
 		{"foreign link is not rendered", "github: organization SAML SSO requires authorizing this token at https://evil.example/sso", ""},
 	}
 	for _, tc := range cases {
