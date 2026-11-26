@@ -262,6 +262,29 @@ func TestBlockedAccountLeavesWorkPending(t *testing.T) {
 	}
 }
 
+func TestUnavailableTokenPausesWithoutMarkingNeedsAuth(t *testing.T) {
+	en := newEnv(t, Config{})
+	en.src.set(func(f *fakeSource) { f.observed = []collect.Observed{obs(1, "a")} })
+	en.mustPoll()
+	en.srcErr = errors.New("keychain locked")
+	en.dispatch()
+	if acct, _ := en.db.Account(en.ctx, "me"); acct.Status != store.StatusOK {
+		t.Fatalf("account = %+v", acct)
+	}
+	if d := en.detail(1); d.Result != nil || d.RetryAt == nil {
+		t.Fatalf("job committed without a token: %+v", d)
+	}
+	if _, ok := en.eng.Pauses()["me"]; !ok {
+		t.Fatal("account not paused")
+	}
+	en.srcErr = nil
+	en.clock.Advance(time.Minute)
+	en.dispatch()
+	if d := en.detail(1); d.Result == nil {
+		t.Fatal("work did not resume after the pause")
+	}
+}
+
 func TestDispatchHonorsPauseAndWorkerLimit(t *testing.T) {
 	en := newEnv(t, Config{Workers: 1})
 	release := make(chan struct{})

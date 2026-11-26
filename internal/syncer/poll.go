@@ -34,9 +34,8 @@ func (e *Engine) PollRepo(ctx context.Context, repoID int64) (int, error) {
 	start := e.now()
 	src, err := e.d.Sources(repo.Account)
 	if err != nil {
-		err = fmt.Errorf("%w: %w", ErrNoToken, err)
-		e.accountBlocked(ctx, repo.Account, err)
-		return e.recordPoll(ctx, log, repo, start, err)
+		e.tokenUnavailable(ctx, repo.Account, err)
+		return e.recordPoll(ctx, log, repo, start, fmt.Errorf("account token: %w", err))
 	}
 	observed, err := src.Fingerprints(ctx, repo.Owner, repo.Name)
 	if ctx.Err() != nil {

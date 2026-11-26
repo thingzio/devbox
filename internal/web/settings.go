@@ -177,8 +177,8 @@ func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
 	paused := map[string]string{}
 	rates := map[string]string{}
 	if s.o.Engine != nil {
-		for account, until := range s.o.Engine.RateStatus() {
-			paused[account] = until.In(s.o.Location).Format("15:04")
+		for account, p := range s.o.Engine.Pauses() {
+			paused[account] = p.Until.In(s.o.Location).Format("15:04") + ": " + p.Reason
 		}
 		for account, readings := range s.o.Engine.RateLimits() {
 			parts := make([]string, 0, len(readings))

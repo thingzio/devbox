@@ -31,8 +31,14 @@ func ClientID() string {
 	return DefaultClientID
 }
 
-// ErrNoSecret means no token is stored for the account.
-var ErrNoSecret = errors.New("auth: no stored token")
+// Secret store errors.
+var (
+	// ErrNoSecret means no token is stored for the account.
+	ErrNoSecret = errors.New("auth: no stored token")
+	// ErrKeychainUnavailable means the OS keychain could not be read or written,
+	// for example while it is locked; a later attempt may succeed.
+	ErrKeychainUnavailable = errors.New("auth: keychain unavailable")
+)
 
 // Secrets stores account tokens outside the database.
 type Secrets interface {
@@ -55,7 +61,7 @@ func (Keyring) Get(login string) (string, error) {
 		return "", ErrNoSecret
 	}
 	if err != nil {
-		return "", fmt.Errorf("auth: keychain unavailable: %w", err)
+		return "", fmt.Errorf("%w: %w", ErrKeychainUnavailable, err)
 	}
 	return tok, nil
 }
@@ -63,7 +69,7 @@ func (Keyring) Get(login string) (string, error) {
 // Set stores the account's token.
 func (Keyring) Set(login, token string) error {
 	if err := keyring.Set(keyringService, keyringUser(login), token); err != nil {
-		return fmt.Errorf("auth: keychain unavailable: %w", err)
+		return fmt.Errorf("%w: %w", ErrKeychainUnavailable, err)
 	}
 	return nil
 }
@@ -75,9 +81,60 @@ func (Keyring) Delete(login string) error {
 		return ErrNoSecret
 	}
 	if err != nil {
-		return fmt.Errorf("auth: keychain unavailable: %w", err)
+		return fmt.Errorf("%w: %w", ErrKeychainUnavailable, err)
 	}
 	return nil
+}
+
+// CachedSecrets remembers tokens read from or written to another store, so
+// polls and enrichment do not read the keychain each time. Only successful
+// reads are cached; a missing token is looked up again.
+type CachedSecrets struct {
+	next Secrets
+	mu   sync.Mutex
+	m    map[string]string
+}
+
+// NewCachedSecrets caches next.
+func NewCachedSecrets(next Secrets) *CachedSecrets {
+	return &CachedSecrets{next: next, m: map[string]string{}}
+}
+
+// Get returns the cached token, reading next on a miss.
+func (c *CachedSecrets) Get(login string) (string, error) {
+	c.mu.Lock()
+	tok, ok := c.m[login]
+	c.mu.Unlock()
+	if ok {
+		return tok, nil
+	}
+	tok, err := c.next.Get(login)
+	if err != nil {
+		return "", err
+	}
+	c.mu.Lock()
+	c.m[login] = tok
+	c.mu.Unlock()
+	return tok, nil
+}
+
+// Set stores the token in next, then caches it.
+func (c *CachedSecrets) Set(login, token string) error {
+	if err := c.next.Set(login, token); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	c.m[login] = token
+	c.mu.Unlock()
+	return nil
+}
+
+// Delete forgets the token and removes it from next.
+func (c *CachedSecrets) Delete(login string) error {
+	c.mu.Lock()
+	delete(c.m, login)
+	c.mu.Unlock()
+	return c.next.Delete(login)
 }
 
 // MemSecrets keeps tokens in memory, for tests.

@@ -36,7 +36,7 @@ func TestHeaderShowsSyncOnEveryPage(t *testing.T) {
 	ts.repo(ts.account("me"), "o", "r")
 	_, body := ts.get("/settings")
 	assertContains(t, "settings", body, `action="/refresh"`, `name="next" value="/settings"`, "Last checked never", "checking every 2m", "sync-idle")
-	ts.engine.setPaused(map[string]time.Time{"me": t0.Add(30 * time.Minute)})
+	ts.engine.setPaused(map[string]syncer.Pause{"me": {Until: t0.Add(30 * time.Minute), Reason: "rate limit exhausted"}})
 	_, body = ts.get("/settings")
 	assertContains(t, "settings while paused", body, "sync-paused")
 	ts.engine.setPaused(nil)

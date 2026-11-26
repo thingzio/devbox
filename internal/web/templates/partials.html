@@ -1,7 +1,7 @@
 {{define "status"}}<section id="alerts" class="alerts" aria-label="Status"{{if .OOB}} hx-swap-oob="true"{{end}}>
 {{- if or .Accounts .Paused .Repos}}
 {{range .Accounts}}<p class="msg err">@{{.Login}} needs re-authentication: {{.Detail}} <a href="/settings#accounts">Re-authenticate</a></p>{{end}}
-{{range .Paused}}<p class="msg warn">@{{.Account}} is paused for rate limits until {{.Until}}</p>{{end}}
+{{range .Paused}}<p class="msg warn">@{{.Account}} is paused until {{.Until}}: {{.Reason}}</p>{{end}}
 {{range .Repos}}<p class="msg {{.Level}}"><strong>{{.Name}}</strong>: {{join .Messages "; "}}</p>{{end}}
 {{end -}}
 </section>{{end}}

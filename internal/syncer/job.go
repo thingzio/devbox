@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -68,7 +67,7 @@ func (e *Engine) RunJob(ctx context.Context, w store.Work) {
 	log := e.d.Log.With("repo", w.Owner+"/"+w.Name, "pr", w.Number)
 	src, err := e.d.Sources(w.Account)
 	if err != nil {
-		e.accountBlocked(ctx, w.Account, fmt.Errorf("%w: %w", ErrNoToken, err))
+		e.tokenUnavailable(ctx, w.Account, err)
 		return
 	}
 	out := src.Collect(ctx, collect.Input{

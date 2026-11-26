@@ -2,6 +2,7 @@ package auth
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/zalando/go-keyring"
@@ -35,10 +36,83 @@ func TestKeyringSecrets(t *testing.T) {
 
 func TestKeyringUnavailable(t *testing.T) {
 	keyring.MockInitWithError(errors.New("no secret service"))
-	if _, err := (Keyring{}).Get("me"); err == nil || errors.Is(err, ErrNoSecret) {
-		t.Fatalf("unavailable keychain err = %v", err)
+	defer keyring.MockInit()
+	for name, op := range map[string]func() error{
+		"get":    func() error { _, err := (Keyring{}).Get("me"); return err },
+		"set":    func() error { return (Keyring{}).Set("me", "tok") },
+		"delete": func() error { return (Keyring{}).Delete("me") },
+	} {
+		if err := op(); !errors.Is(err, ErrKeychainUnavailable) || errors.Is(err, ErrNoSecret) {
+			t.Errorf("%s: unavailable keychain err = %v", name, err)
+		}
 	}
-	keyring.MockInit()
+}
+
+type countingSecrets struct {
+	Secrets
+	gets int
+	err  error
+}
+
+func (c *countingSecrets) Get(login string) (string, error) {
+	c.gets++
+	if c.err != nil {
+		return "", c.err
+	}
+	return c.Secrets.Get(login)
+}
+
+func TestCachedSecrets(t *testing.T) {
+	exerciseSecrets(t, NewCachedSecrets(NewMemSecrets()))
+
+	inner := &countingSecrets{Secrets: NewMemSecrets()}
+	c := NewCachedSecrets(inner)
+	if _, err := c.Get("me"); !errors.Is(err, ErrNoSecret) {
+		t.Fatalf("missing err = %v", err)
+	}
+	if err := inner.Set("me", "tok"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.Get("me"); err != nil || got != "tok" {
+		t.Fatalf("Get after a miss = %q, %v; a miss must not be cached", got, err)
+	}
+	gets := inner.gets
+	inner.err = fmt.Errorf("%w: locked", ErrKeychainUnavailable)
+	if got, err := c.Get("me"); err != nil || got != "tok" || inner.gets != gets {
+		t.Fatalf("cached Get = %q, %v after %d reads; want the cached token without a keychain read", got, err, inner.gets-gets)
+	}
+	inner.err = nil
+	if err := c.Set("me", "new"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := c.Get("me"); got != "new" {
+		t.Fatalf("Get after Set = %q", got)
+	}
+	if err := c.Delete("me"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Get("me"); !errors.Is(err, ErrNoSecret) {
+		t.Fatalf("Get after Delete err = %v", err)
+	}
+}
+
+type failingSet struct{ Secrets }
+
+func (failingSet) Set(string, string) error { return ErrKeychainUnavailable }
+
+func TestCachedSecretsKeepsOldTokenWhenSetFails(t *testing.T) {
+	inner := NewMemSecrets()
+	_ = inner.Set("me", "old")
+	c := NewCachedSecrets(failingSet{inner})
+	if _, err := c.Get("me"); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Set("me", "new"); err == nil {
+		t.Fatal("Set succeeded")
+	}
+	if got, _ := c.Get("me"); got != "old" {
+		t.Fatalf("Get = %q; a failed Set must not change the cache", got)
+	}
 }
 
 func TestClientID(t *testing.T) {

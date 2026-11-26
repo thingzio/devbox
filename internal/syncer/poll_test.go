@@ -109,13 +109,13 @@ func TestPollSkipsUnavailableAccountsAndRepos(t *testing.T) {
 	if en.src.fpCalls != 0 {
 		t.Fatalf("polled %d times while unavailable", en.src.fpCalls)
 	}
-	if until, ok := en.eng.RateStatus()["me"]; !ok || !until.Equal(t0.Add(time.Hour)) {
-		t.Fatalf("rate status = %v", en.eng.RateStatus())
+	if p, ok := en.eng.Pauses()["me"]; !ok || !p.Until.Equal(t0.Add(time.Hour)) || !strings.Contains(p.Reason, "rate limit") {
+		t.Fatalf("pauses = %v", en.eng.Pauses())
 	}
 	en.clock.Advance(61 * time.Minute)
 	en.mustPoll()
-	if en.src.fpCalls != 1 || len(en.eng.RateStatus()) != 0 {
-		t.Fatalf("pause did not lift: calls %d status %v", en.src.fpCalls, en.eng.RateStatus())
+	if en.src.fpCalls != 1 || len(en.eng.Pauses()) != 0 {
+		t.Fatalf("pause did not lift: calls %d pauses %v", en.src.fpCalls, en.eng.Pauses())
 	}
 }
 
@@ -125,9 +125,11 @@ func TestPollAuthFailures(t *testing.T) {
 		fpErr      error
 		srcErr     error
 		wantStatus string
+		wantPause  string
 	}{
 		{name: "token rejected", fpErr: fmt.Errorf("%w: Bad credentials", github.ErrUnauthorized), wantStatus: store.StatusNeedsAuth},
-		{name: "keychain unavailable", srcErr: errors.New("keychain locked"), wantStatus: store.StatusNeedsAuth},
+		{name: "token missing", srcErr: fmt.Errorf("%w: no stored token", ErrNoToken), wantStatus: store.StatusNeedsAuth},
+		{name: "keychain unavailable is transient", srcErr: errors.New("keychain locked"), wantStatus: store.StatusOK, wantPause: "token unavailable"},
 		{name: "sso is per org", fpErr: &github.SSORequiredError{URL: "https://github.com/orgs/o/sso"}, wantStatus: store.StatusOK},
 	}
 	for _, tc := range cases {
@@ -145,6 +147,13 @@ func TestPollAuthFailures(t *testing.T) {
 			statuses, _ := en.db.RepoStatuses(en.ctx)
 			if statuses[0].Sync.LastError == "" {
 				t.Fatal("poll error not recorded")
+			}
+			p, paused := en.eng.Pauses()["me"]
+			if (tc.wantPause != "") != paused || !strings.Contains(p.Reason, tc.wantPause) {
+				t.Fatalf("pauses = %v, want reason containing %q", en.eng.Pauses(), tc.wantPause)
+			}
+			if paused && !p.Until.Equal(t0.Add(time.Minute)) {
+				t.Fatalf("pause until %v, want one minute", p.Until)
 			}
 		})
 	}

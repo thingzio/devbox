@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/thingzio/devbox/internal/hub"
+	"github.com/thingzio/devbox/internal/syncer"
 )
 
 func TestQueueRendersRanksAndEscapes(t *testing.T) {
@@ -103,11 +104,17 @@ func TestStatusBarShowsAuthAndRateProblems(t *testing.T) {
 	if err := ts.db.SetAccountStatus(ts.ctx, "me", "needs_auth", "token rejected by GitHub"); err != nil {
 		t.Fatal(err)
 	}
-	ts.engine.setPaused(map[string]time.Time{"me": t0.Add(30 * time.Minute)})
+	ts.engine.setPaused(map[string]syncer.Pause{
+		"me":    {Until: t0.Add(30 * time.Minute), Reason: "graphql rate limit low (10 of 5000 left)"},
+		"other": {Until: t0.Add(time.Minute), Reason: "token unavailable: keychain locked"},
+	})
 	_, body := ts.get("/")
-	if !strings.Contains(body, "@me needs re-authentication: token rejected by GitHub") || !strings.Contains(body, "paused for rate limits until 12:30") {
-		t.Fatalf("auth/rate banners missing:\n%s", body)
-	}
+	assertContains(t, "queue", body,
+		"@me needs re-authentication: token rejected by GitHub",
+		"@me is paused until 12:30: graphql rate limit low (10 of 5000 left)",
+		"@other is paused until 12:01: token unavailable: keychain locked")
+	_, body = ts.get("/settings")
+	assertContains(t, "settings", body, "paused until 12:30: graphql rate limit low (10 of 5000 left)")
 }
 
 func TestRepoPageShowsBothAccounts(t *testing.T) {

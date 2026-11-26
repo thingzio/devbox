@@ -32,7 +32,7 @@ var staticFS embed.FS
 type Engine interface {
 	ReposChanged()
 	RulesChanged(ctx context.Context, repoID int64, collectionChanged bool) error
-	RateStatus() map[string]time.Time
+	Pauses() map[string]syncer.Pause
 	RateLimits() map[string][]github.Rate
 	Polling() syncer.Polling
 	SetPolling(syncer.Polling)

@@ -297,7 +297,7 @@ func minutesAgo(d time.Duration) string {
 
 type accountStatus struct{ Login, Detail string }
 
-type pausedView struct{ Account, Until string }
+type pausedView struct{ Account, Until, Reason string }
 
 type repoStatusView struct {
 	Name     string
@@ -335,8 +335,8 @@ func (s *Server) buildStatus(ctx context.Context) statusView {
 		}
 	}
 	if s.o.Engine != nil {
-		for account, until := range s.o.Engine.RateStatus() {
-			v.Paused = append(v.Paused, pausedView{Account: account, Until: until.In(s.o.Location).Format("15:04")})
+		for account, p := range s.o.Engine.Pauses() {
+			v.Paused = append(v.Paused, pausedView{Account: account, Until: p.Until.In(s.o.Location).Format("15:04"), Reason: p.Reason})
 		}
 		slices.SortFunc(v.Paused, func(a, b pausedView) int { return strings.Compare(a.Account, b.Account) })
 	}

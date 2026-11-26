@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -226,5 +227,42 @@ func TestRunUsesSavedPollingOverDefault(t *testing.T) {
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatalf("Run: %v", err)
+	}
+}
+
+type brokenSecrets struct{ auth.Secrets }
+
+func (brokenSecrets) Get(string) (string, error) {
+	return "", fmt.Errorf("%w: locked", auth.ErrKeychainUnavailable)
+}
+
+func TestAccountToken(t *testing.T) {
+	stored := auth.NewMemSecrets()
+	_ = stored.Set("me", "tok")
+	cases := []struct {
+		name      string
+		secrets   auth.Secrets
+		account   string
+		want      string
+		noToken   bool
+		transient bool
+	}{
+		{name: "stored", secrets: stored, account: "me", want: "tok"},
+		{name: "missing needs re-authentication", secrets: stored, account: "other", noToken: true},
+		{name: "locked keychain is transient", secrets: brokenSecrets{}, account: "me", transient: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := accountToken(tc.secrets, tc.account)
+			if got != tc.want {
+				t.Fatalf("token = %q", got)
+			}
+			if errors.Is(err, syncer.ErrNoToken) != tc.noToken {
+				t.Fatalf("err = %v, want ErrNoToken %v", err, tc.noToken)
+			}
+			if errors.Is(err, auth.ErrKeychainUnavailable) != tc.transient {
+				t.Fatalf("err = %v, want keychain unavailable %v", err, tc.transient)
+			}
+		})
 	}
 }

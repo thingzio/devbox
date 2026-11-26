@@ -79,6 +79,16 @@ func effectivePolling(ctx context.Context, db *store.DB, def syncer.Polling, log
 	return p, "settings"
 }
 
+// accountToken reads an account's token. Only a missing token means the
+// account needs re-authentication; other failures are worth retrying.
+func accountToken(secrets auth.Secrets, account string) (string, error) {
+	token, err := secrets.Get(account)
+	if errors.Is(err, auth.ErrNoSecret) {
+		return "", fmt.Errorf("%w: %w", syncer.ErrNoToken, err)
+	}
+	return token, err
+}
+
 func isLoopback(host string) bool {
 	if host == "localhost" {
 		return true
@@ -120,10 +130,11 @@ func Run(ctx context.Context, cfg Config) error {
 	reg.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	m := metrics.New(reg)
 	metrics.RegisterPRGauge(reg, db)
-	secrets := cfg.Secrets
-	if secrets == nil {
-		secrets = auth.Keyring{}
+	var secrets auth.Secrets = auth.Keyring{}
+	if cfg.Secrets != nil {
+		secrets = cfg.Secrets
 	}
+	secrets = auth.NewCachedSecrets(secrets)
 
 	var engine *syncer.Engine
 	newClient := func(token, account string) (*github.Client, error) {
@@ -138,7 +149,7 @@ func Run(ctx context.Context, cfg Config) error {
 		})
 	}
 	sources := func(account string) (syncer.Source, error) {
-		token, err := secrets.Get(account)
+		token, err := accountToken(secrets, account)
 		if err != nil {
 			return nil, err
 		}

@@ -21,8 +21,18 @@ import (
 	"github.com/thingzio/devbox/internal/store"
 )
 
-// ErrNoToken wraps failures to obtain an account's token (missing or keychain error).
+// ErrNoToken marks a Sources error meaning the account has no token at all, so
+// it needs re-authentication. Any other Sources error is treated as transient.
 var ErrNoToken = errors.New("no usable token for account")
+
+// tokenRetry is how long an account pauses after its token could not be read.
+const tokenRetry = time.Minute
+
+// Pause is why an account's GitHub reads are on hold, and until when.
+type Pause struct {
+	Until  time.Time
+	Reason string
+}
 
 // Source is one account's view of GitHub; *collect.Source implements it.
 type Source interface {
@@ -72,7 +82,7 @@ type Engine struct {
 	mu        gosync.Mutex
 	jobs      map[prKey]context.CancelFunc
 	sems      map[string]chan struct{}
-	paused    map[string]time.Time
+	paused    map[string]Pause
 	rates     map[string]map[string]github.Rate
 	reclassMu gosync.Mutex
 	wg        gosync.WaitGroup
@@ -117,7 +127,7 @@ func New(cfg Config, d Deps) *Engine {
 	}
 	return &Engine{
 		cfg: cfg, d: d,
-		jobs: map[prKey]context.CancelFunc{}, sems: map[string]chan struct{}{}, paused: map[string]time.Time{},
+		jobs: map[prKey]context.CancelFunc{}, sems: map[string]chan struct{}{}, paused: map[string]Pause{},
 		rates: map[string]map[string]github.Rate{},
 		wake:  make(chan struct{}, 1), resync: make(chan struct{}, 1),
 		polling: Polling{Manual: cfg.Manual, Interval: cfg.PollInterval},
@@ -211,9 +221,9 @@ func (e *Engine) pauseUntil(account string, until time.Time, why string) {
 		until = now.Add(time.Minute)
 	}
 	e.mu.Lock()
-	extended := until.After(e.paused[account])
+	extended := until.After(e.paused[account].Until)
 	if extended {
-		e.paused[account] = until
+		e.paused[account] = Pause{Until: until, Reason: why}
 	}
 	e.mu.Unlock()
 	if extended {
@@ -224,11 +234,11 @@ func (e *Engine) pauseUntil(account string, until time.Time, why string) {
 func (e *Engine) isPaused(account string) bool {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	until, ok := e.paused[account]
+	p, ok := e.paused[account]
 	if !ok {
 		return false
 	}
-	if !e.now().Before(until) {
+	if !e.now().Before(p.Until) {
 		delete(e.paused, account)
 		return false
 	}
@@ -251,9 +261,9 @@ func (e *Engine) RateLimits() map[string][]github.Rate {
 	return out
 }
 
-// pausedAccounts lists accounts currently paused for rate limits.
+// pausedAccounts lists accounts currently paused.
 func (e *Engine) pausedAccounts() []string {
-	paused := e.RateStatus()
+	paused := e.Pauses()
 	out := make([]string, 0, len(paused))
 	for account := range paused {
 		out = append(out, account)
@@ -262,22 +272,33 @@ func (e *Engine) pausedAccounts() []string {
 	return out
 }
 
-// RateStatus returns accounts paused for rate limits and when they resume.
-func (e *Engine) RateStatus() map[string]time.Time {
+// Pauses returns the accounts currently paused, with why and until when.
+func (e *Engine) Pauses() map[string]Pause {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	now := e.now()
-	out := map[string]time.Time{}
-	for account, until := range e.paused {
-		if now.Before(until) {
-			out[account] = until
+	out := map[string]Pause{}
+	for account, p := range e.paused {
+		if now.Before(p.Until) {
+			out[account] = p
 		}
 	}
 	return out
 }
 
+// tokenUnavailable handles a Sources error: a missing token needs
+// re-authentication; anything else, such as a locked keychain, pauses briefly.
+func (e *Engine) tokenUnavailable(ctx context.Context, account string, err error) {
+	if errors.Is(err, ErrNoToken) {
+		e.accountBlocked(ctx, account, err)
+		return
+	}
+	e.d.Log.Warn("account token unavailable; retrying", "account", account, "err", err, "retry_in", tokenRetry)
+	e.pauseUntil(account, e.now().Add(tokenRetry), "token unavailable: "+err.Error())
+}
+
 // accountBlocked pauses the account on rate exhaustion, or marks it
-// needs_auth on a rejected or unavailable token, and reports whether it did.
+// needs_auth on a rejected or missing token, and reports whether it did.
 func (e *Engine) accountBlocked(ctx context.Context, account string, err error) bool {
 	if reset, ok := github.RateLimitReset(err); ok {
 		e.pauseUntil(account, reset, "rate limit exhausted")

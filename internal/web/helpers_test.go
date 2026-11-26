@@ -31,7 +31,7 @@ type fakeEngine struct {
 	mu           sync.Mutex
 	reposChanged int
 	rulesCalls   []rulesCall
-	paused       map[string]time.Time
+	paused       map[string]syncer.Pause
 	rates        map[string][]github.Rate
 	polling      syncer.Polling
 	setPolling   []syncer.Polling
@@ -62,7 +62,7 @@ func (f *fakeEngine) RulesChanged(_ context.Context, repoID int64, changed bool)
 	f.rulesCalls = append(f.rulesCalls, rulesCall{repoID, changed})
 	return nil
 }
-func (f *fakeEngine) RateStatus() map[string]time.Time {
+func (f *fakeEngine) Pauses() map[string]syncer.Pause {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.paused
@@ -82,7 +82,7 @@ func (f *fakeEngine) rules() []rulesCall {
 	defer f.mu.Unlock()
 	return append([]rulesCall(nil), f.rulesCalls...)
 }
-func (f *fakeEngine) setPaused(p map[string]time.Time) {
+func (f *fakeEngine) setPaused(p map[string]syncer.Pause) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.paused = p
