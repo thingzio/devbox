@@ -49,8 +49,10 @@ DevBox starts on http://127.0.0.1:8484 and opens it in your default browser.
 
 1. **Add an account** in Settings: sign in with GitHub, or paste a classic
    personal access token with the `repo` and `read:org` scopes.
-2. **Add the repositories you maintain**: `owner/name` or any GitHub URL inside
-   the repository.
+2. **Add the repositories you maintain**: `owner/name`, any GitHub URL inside
+   the repository, or its SSH remote. Not sure which? **Suggest repositories**
+   proposes up to five you can push to, ranked by open pull requests that
+   request your review and by your reviews in the last 30 days.
 3. **Open the Queue.** Tiles count each bucket and filter to it; the sidebar
    lists pull requests ready to merge and every repository you watch. Select a
    pull request's title to see why it is where it is.

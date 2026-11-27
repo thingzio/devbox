@@ -249,7 +249,9 @@ func TestRepository(t *testing.T) {
 	reader := newReader(t, func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/repos/nvidia/AICR":
-			fmt.Fprint(w, `{"name":"aicr","owner":{"login":"NVIDIA"},"full_name":"NVIDIA/aicr"}`)
+			fmt.Fprint(w, `{"name":"aicr","owner":{"login":"NVIDIA"},"archived":false,"permissions":{"pull":true,"push":true}}`)
+		case "/repos/o/old":
+			fmt.Fprint(w, `{"name":"old","owner":{"login":"o"},"archived":true}`)
 		case "/repos/o/missing":
 			w.WriteHeader(http.StatusNotFound)
 			fmt.Fprint(w, `{"message":"Not Found"}`)
@@ -260,15 +262,37 @@ func TestRepository(t *testing.T) {
 		}
 	})
 	ctx := context.Background()
-	if owner, name, err := reader.Repository(ctx, "nvidia", "AICR"); err != nil || owner != "NVIDIA" || name != "aicr" {
-		t.Fatalf("Repository = %s/%s, %v", owner, name, err)
+	if got, err := reader.Repository(ctx, "nvidia", "AICR"); err != nil || got != (RepoInfo{Owner: "NVIDIA", Name: "aicr", Push: true}) {
+		t.Fatalf("Repository = %+v, %v", got, err)
+	}
+	if got, err := reader.Repository(ctx, "o", "old"); err != nil || !got.Archived || got.Push {
+		t.Fatalf("archived = %+v, %v", got, err)
 	}
 	var se *github.StatusError
-	if _, _, err := reader.Repository(ctx, "o", "missing"); !errors.As(err, &se) || se.Status != http.StatusNotFound {
+	if _, err := reader.Repository(ctx, "o", "missing"); !errors.As(err, &se) || se.Status != http.StatusNotFound {
 		t.Fatalf("missing err = %v", err)
 	}
-	if _, _, err := reader.Repository(ctx, "o", "empty"); err == nil {
+	if _, err := reader.Repository(ctx, "o", "empty"); err == nil {
 		t.Fatal("a response without a name was accepted")
+	}
+}
+
+func TestSearchPullRequests(t *testing.T) {
+	reader := newReader(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search/issues" || r.URL.Query().Get("q") != "is:pr is:open review-requested:@me" || r.URL.Query().Get("per_page") != "100" {
+			t.Errorf("search request = %s", r.URL)
+		}
+		fmt.Fprint(w, `{"total_count":3,"items":[
+{"repository_url":"https://api.github.com/repos/NVIDIA/aicr"},
+{"repository_url":"https://api.github.com/repos/o/r"},
+{"repository_url":"https://example.com/elsewhere"}]}`)
+	})
+	got, err := reader.SearchPullRequests(context.Background(), "is:pr is:open review-requested:@me")
+	if err != nil || !slices.Equal(got, []string{"NVIDIA/aicr", "o/r"}) {
+		t.Fatalf("SearchPullRequests = %v, %v", got, err)
+	}
+	if _, err := reader.SearchPullRequests(context.Background(), "review-requested:@me"); err == nil {
+		t.Fatal("a query without is:pr was sent; GitHub App user tokens require it")
 	}
 }
 

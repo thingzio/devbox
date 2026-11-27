@@ -362,3 +362,10 @@ kbd {
   font-family: var(--font-mono); font-size: 0.75rem; padding: 0.05rem 0.35rem; border-radius: 4px;
   border: 1px solid var(--border); background: var(--surface-alt); color: var(--text);
 }
+
+/* Repository suggestions */
+.suggestions { list-style: none; margin-top: 0.5rem; }
+.suggestions li { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.55rem 0; border-bottom: 1px solid var(--border); }
+.suggestions li:last-child { border-bottom: 0; }
+.suggestion-main { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; overflow-wrap: anywhere; }
+.suggestion-main a { font-family: var(--font-mono); font-weight: 600; }

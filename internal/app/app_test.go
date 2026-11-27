@@ -56,7 +56,14 @@ func fakeGitHub(t *testing.T) *httptest.Server {
 				w.WriteHeader(http.StatusBadRequest)
 			}
 		case "/repos/o/r":
-			fmt.Fprint(w, `{"name":"r","owner":{"login":"o"}}`)
+			fmt.Fprint(w, `{"name":"r","owner":{"login":"o"},"permissions":{"push":true}}`)
+		case "/repos/acme/api":
+			fmt.Fprint(w, `{"name":"api","owner":{"login":"acme"},"permissions":{"push":true}}`)
+		case "/repos/other/lib":
+			fmt.Fprint(w, `{"name":"lib","owner":{"login":"other"},"permissions":{"push":false}}`)
+		case "/search/issues":
+			fmt.Fprint(w, `{"items":[{"repository_url":"https://api.github.com/repos/o/r"},
+{"repository_url":"https://api.github.com/repos/acme/api"},{"repository_url":"https://api.github.com/repos/other/lib"}]}`)
 		case "/repos/o/r/rules/branches/main":
 			fmt.Fprint(w, `[]`)
 		case "/repos/o/r/branches/main/protection/required_signatures":
@@ -377,6 +384,53 @@ func TestRunWiresDesktopNotifications(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("test notification never reached the desktop sender")
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+}
+
+func TestRunSuggestsRepositories(t *testing.T) {
+	gh := fakeGitHub(t)
+	cfg := baseConfig(t)
+	cfg.GitHubAPIURL, cfg.GitHubURL = gh.URL, gh.URL
+	ready := make(chan string, 1)
+	cfg.Ready = func(addr string) { ready <- addr }
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- Run(ctx, cfg) }()
+	var base string
+	select {
+	case addr := <-ready:
+		base = "http://" + addr
+	case err := <-done:
+		t.Fatalf("Run exited: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("not ready")
+	}
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	do := func(method, path string, form url.Values) string {
+		t.Helper()
+		req, _ := http.NewRequestWithContext(ctx, method, base+path, strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", base)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		return string(body)
+	}
+	do(http.MethodPost, "/accounts/pat", url.Values{"token": {"ghp_e2e"}})
+	do(http.MethodPost, "/repos", url.Values{"account": {"me"}, "repo": {"o/r"}})
+	body := do(http.MethodGet, "/settings?suggest=me", nil)
+	if !strings.Contains(body, `<input type="hidden" name="repo" value="acme/api">`) {
+		t.Fatalf("acme/api not suggested:\n%s", body)
+	}
+	if strings.Contains(body, `name="repo" value="o/r"`) || strings.Contains(body, `name="repo" value="other/lib"`) {
+		t.Fatal("suggested a watched repository or one without push access")
 	}
 	cancel()
 	if err := <-done; err != nil {

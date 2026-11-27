@@ -19,6 +19,7 @@ import (
 	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/store"
+	"github.com/thingzio/devbox/internal/suggest"
 	"github.com/thingzio/devbox/internal/syncer"
 	"github.com/thingzio/devbox/internal/version"
 )
@@ -56,6 +57,9 @@ type Options struct {
 	// ResolveRepo reads a repository with an account's credentials and returns
 	// GitHub's own owner and name for it, following renames. Required.
 	ResolveRepo func(ctx context.Context, account, owner, name string) (string, string, error)
+	// SuggestRepos proposes repositories for an account to watch from its
+	// review activity; nil hides the feature.
+	SuggestRepos func(ctx context.Context, account string) ([]suggest.Suggestion, error)
 	// TestNotification sends a sample desktop notification; nil where the
 	// platform has none, which also hides the setting.
 	TestNotification func(ctx context.Context) error

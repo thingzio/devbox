@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -231,6 +232,40 @@ type settingsView struct {
 	NotifyAvailable    bool
 	NotifyOn           bool
 	ErrorSSOURL        string // with Error: the page that authorizes the token for SSO
+	CanSuggest         bool
+	SuggestFor         string
+	Suggestions        []suggestionView
+	SuggestMessage     string
+}
+
+type suggestionView struct{ Repo, URL, Reason string }
+
+// fillSuggestions answers ?suggest=<login>: repositories that account reviews
+// in but does not watch. It runs only when asked, since it searches GitHub.
+func (s *Server) fillSuggestions(r *http.Request, v *settingsView) {
+	login := r.URL.Query().Get("suggest")
+	if login == "" || !v.CanSuggest {
+		return
+	}
+	if !slices.Contains(v.AccountLogins, login) {
+		v.SuggestMessage = fmt.Sprintf("There is no account @%s; choose one from the list.", login)
+		return
+	}
+	v.SuggestFor = login
+	found, err := s.o.SuggestRepos(r.Context(), login)
+	if err != nil {
+		s.o.Log.Warn("repository suggestions failed", "account", login, "err", err)
+		v.SuggestMessage = fmt.Sprintf("DevBox could not suggest repositories for @%s: %v", login, err)
+		return
+	}
+	if len(found) == 0 {
+		v.SuggestMessage = fmt.Sprintf("No suggestions for @%s: no open review requests or recent reviews in repositories you can push to and do not already watch.", login)
+		return
+	}
+	for _, f := range found {
+		repo := f.Owner + "/" + f.Name
+		v.Suggestions = append(v.Suggestions, suggestionView{Repo: repo, URL: githubURL("https://github.com/" + repo), Reason: f.Reason()})
+	}
 }
 
 func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
@@ -240,6 +275,7 @@ func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
 	}
 	v.ClientIDConfigured = s.o.Auth != nil && s.o.Auth.DeviceConfigured()
 	v.NotifyAvailable = s.o.TestNotification != nil
+	v.CanSuggest = s.o.SuggestRepos != nil
 	on, _, err := s.o.Store.Setting(ctx, notify.SettingKey)
 	if err != nil {
 		return v, err
@@ -294,7 +330,13 @@ func (s *Server) renderSettings(w http.ResponseWriter, r *http.Request, status i
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
-	s.renderSettings(w, r, http.StatusOK, "")
+	v, err := s.buildSettings(r.Context())
+	if err != nil {
+		s.serverError(w, err)
+		return
+	}
+	s.fillSuggestions(r, &v)
+	s.render(w, r, "settings", http.StatusOK, pageData{Title: "Settings", Body: v})
 }
 
 // errNoAccount means a form was submitted before any account was chosen.
@@ -425,6 +467,11 @@ func (s *Server) handleAddRepo(w http.ResponseWriter, r *http.Request) {
 	}
 	s.o.Log.Info("repository added", "repo", owner+"/"+name, "account", acct.Login)
 	s.o.Engine.ReposChanged()
+	if from := r.PostFormValue("suggest"); from != "" {
+		// Added from the suggestions: return to them so the next can be added.
+		http.Redirect(w, r, localPath("/settings?suggest="+url.QueryEscape(from)+"#repos"), http.StatusSeeOther) //nolint:gosec // localPath allows only paths on this server
+		return
+	}
 	s.backToSettings(w, r)
 }
 

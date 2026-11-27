@@ -25,6 +25,7 @@ import (
 	"github.com/thingzio/devbox/internal/metrics"
 	"github.com/thingzio/devbox/internal/notify"
 	"github.com/thingzio/devbox/internal/store"
+	"github.com/thingzio/devbox/internal/suggest"
 	"github.com/thingzio/devbox/internal/syncer"
 	"github.com/thingzio/devbox/internal/version"
 	"github.com/thingzio/devbox/internal/web"
@@ -205,6 +206,27 @@ func Run(ctx context.Context, cfg Config) error {
 		Store: db, Hub: h, Auth: mgr, Engine: engine, Metrics: promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
 		Log: log, Addr: ln.Addr().String(), AllowRemote: cfg.AllowRemote, AccessToken: accessToken, DefaultPolling: cfg.Polling, ImportDir: cfg.ImportDir,
 		TestNotification: testNotification,
+		SuggestRepos: func(ctx context.Context, account string) ([]suggest.Suggestion, error) {
+			token, err := accountToken(ctx, tokens, account)
+			if err != nil {
+				return nil, err
+			}
+			c, err := newClient(token, account)
+			if err != nil {
+				return nil, err
+			}
+			repos, err := db.Repos(ctx)
+			if err != nil {
+				return nil, err
+			}
+			var watched []string
+			for _, r := range repos {
+				if r.Account == account {
+					watched = append(watched, r.FullName())
+				}
+			}
+			return suggest.Suggest(ctx, collect.GitHubReader{Client: c}, watched, time.Now())
+		},
 		ResolveRepo: func(ctx context.Context, account, owner, name string) (string, string, error) {
 			token, err := accountToken(ctx, tokens, account)
 			if err != nil {
@@ -214,7 +236,8 @@ func Run(ctx context.Context, cfg Config) error {
 			if err != nil {
 				return "", "", err
 			}
-			return collect.GitHubReader{Client: c}.Repository(ctx, owner, name)
+			info, err := collect.GitHubReader{Client: c}.Repository(ctx, owner, name)
+			return info.Owner, info.Name, err
 		},
 	})
 	if err != nil {

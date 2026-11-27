@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -353,20 +354,59 @@ func (g GitHubReader) TeamMember(ctx context.Context, org, team, login string) (
 	return out.State == "active", nil
 }
 
-// Repository reads a repository and returns GitHub's own owner and name for
-// it; GitHub answers a renamed repository's old name with its new one.
-func (g GitHubReader) Repository(ctx context.Context, owner, name string) (string, string, error) {
+// RepoInfo is what GitHub says about a repository as the token sees it.
+type RepoInfo struct {
+	Owner, Name string // GitHub's own spelling; a renamed repository reports its new name
+	Push        bool   // the token's user can push: likely a maintainer
+	Archived    bool
+}
+
+// Repository reads a repository; GitHub answers a renamed repository's old
+// name with its new one.
+func (g GitHubReader) Repository(ctx context.Context, owner, name string) (RepoInfo, error) {
 	var out struct {
 		Name  string `json:"name"`
 		Owner struct {
 			Login string `json:"login"`
 		} `json:"owner"`
+		Archived    bool `json:"archived"`
+		Permissions struct {
+			Push bool `json:"push"`
+		} `json:"permissions"`
 	}
 	if _, err := g.Client.Get(ctx, repoPath(owner, name), &out); err != nil {
-		return "", "", err
+		return RepoInfo{}, err
 	}
 	if out.Owner.Login == "" || out.Name == "" {
-		return "", "", fmt.Errorf("repository %s/%s: GitHub returned no name", owner, name)
+		return RepoInfo{}, fmt.Errorf("repository %s/%s: GitHub returned no name", owner, name)
 	}
-	return out.Owner.Login, out.Name, nil
+	return RepoInfo{Owner: out.Owner.Login, Name: out.Name, Push: out.Permissions.Push, Archived: out.Archived}, nil
+}
+
+// SearchPullRequests returns the owner/name of the repository behind each pull
+// request matching query (first 100). The query must say is:pr: GitHub App
+// user tokens cannot search issues and pull requests together.
+func (g GitHubReader) SearchPullRequests(ctx context.Context, query string) ([]string, error) {
+	if !slices.Contains(strings.Fields(query), "is:pr") {
+		return nil, fmt.Errorf("search %q: the query must include is:pr", query)
+	}
+	var out struct {
+		Items []struct {
+			RepositoryURL string `json:"repository_url"`
+		} `json:"items"`
+	}
+	if _, err := g.Client.Get(ctx, "search/issues?per_page=100&q="+url.QueryEscape(query), &out); err != nil {
+		return nil, err
+	}
+	repos := make([]string, 0, len(out.Items))
+	for _, it := range out.Items {
+		u, err := url.Parse(it.RepositoryURL)
+		if err != nil {
+			continue
+		}
+		if full, ok := strings.CutPrefix(u.Path, "/repos/"); ok && strings.Count(full, "/") == 1 {
+			repos = append(repos, full)
+		}
+	}
+	return repos, nil
 }
