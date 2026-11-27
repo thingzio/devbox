@@ -205,6 +205,17 @@ func Run(ctx context.Context, cfg Config) error {
 		Store: db, Hub: h, Auth: mgr, Engine: engine, Metrics: promhttp.HandlerFor(reg, promhttp.HandlerOpts{}),
 		Log: log, Addr: ln.Addr().String(), AllowRemote: cfg.AllowRemote, AccessToken: accessToken, DefaultPolling: cfg.Polling, ImportDir: cfg.ImportDir,
 		TestNotification: testNotification,
+		ResolveRepo: func(ctx context.Context, account, owner, name string) (string, string, error) {
+			token, err := accountToken(ctx, tokens, account)
+			if err != nil {
+				return "", "", err
+			}
+			c, err := newClient(token, account)
+			if err != nil {
+				return "", "", err
+			}
+			return collect.GitHubReader{Client: c}.Repository(ctx, owner, name)
+		},
 	})
 	if err != nil {
 		_ = ln.Close()

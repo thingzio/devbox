@@ -26,6 +26,10 @@ func TestParseRepoReference(t *testing.T) {
 		"github.com/NVIDIA/aicr/pull/12":            "NVIDIA/aicr",
 		"https://github.com/NVIDIA/aicr/pulls?q=is": "NVIDIA/aicr",
 		"o/repo.with_dots-and_underscores":          "o/repo.with_dots-and_underscores",
+		"git@github.com:NVIDIA/aicr.git":            "NVIDIA/aicr",
+		"git@github.com:NVIDIA/aicr":                "NVIDIA/aicr",
+		"ssh://git@github.com/NVIDIA/aicr.git":      "NVIDIA/aicr",
+		"git+ssh://git@github.com/NVIDIA/aicr":      "NVIDIA/aicr",
 	}
 	for in, want := range ok {
 		owner, name, err := parseRepoReference(in)
@@ -33,7 +37,8 @@ func TestParseRepoReference(t *testing.T) {
 			t.Errorf("parseRepoReference(%q) = %s/%s, %v; want %s", in, owner, name, err, want)
 		}
 	}
-	for _, in := range []string{"", "NVIDIA", "gitlab.com/o/r", "https://gitlab.com/o/r", "-bad/r", "o/r r", "o/..", "git@github.com:o/r.git", "o/" + strings.Repeat("x", 101)} {
+	for _, in := range []string{"", "NVIDIA", "gitlab.com/o/r", "https://gitlab.com/o/r", "-bad/r", "o/r r", "o/..", "o/" + strings.Repeat("x", 101),
+		"git@gitlab.com:o/r.git", "ssh://git@gitlab.com/o/r", "git@github.com:o", "evil@github.com:o/r"} {
 		if owner, name, err := parseRepoReference(in); err == nil {
 			t.Errorf("parseRepoReference(%q) = %s/%s, want error", in, owner, name)
 		}
@@ -334,4 +339,63 @@ func TestClassicTokenFieldNamesItsScopes(t *testing.T) {
 	ts := newTestServer(t)
 	_, body := ts.get("/settings")
 	assertContains(t, "settings", body, `placeholder="ghp_… with the repo and read:org scopes"`)
+}
+
+func TestAddRepoChecksTheRepositoryWithGitHub(t *testing.T) {
+	ts := newTestServer(t)
+	ts.account("me")
+	for in, want := range map[string]string{"nvidia/aicr": "NVIDIA/aicr", "renamed/old": "renamed/new"} {
+		if code, body, _ := ts.post("/repos", url.Values{"account": {"me"}, "repo": {in}}); code != http.StatusSeeOther {
+			t.Fatalf("add %s = %d\n%s", in, code, body)
+		}
+		repos, _ := ts.db.ReposByName(ts.ctx, strings.Split(want, "/")[0], strings.Split(want, "/")[1])
+		if len(repos) != 1 || repos[0].FullName() != want {
+			t.Fatalf("%s stored as %+v, want GitHub's name %s", in, repos, want)
+		}
+	}
+	if got := ts.resolved(); len(got) != 2 || got[0] != "me:nvidia/aicr" {
+		t.Fatalf("resolver calls = %v", got)
+	}
+
+	code, body, _ := ts.post("/repos", url.Values{"account": {"me"}, "repo": {"thingzio/missing"}})
+	if code != http.StatusUnprocessableEntity || !strings.Contains(body, "thingzio/missing was not found, or @me cannot read it") ||
+		!strings.Contains(body, "DevBox GitHub App") {
+		t.Fatalf("missing repo = %d\n%s", code, body)
+	}
+	code, body, _ = ts.post("/repos", url.Values{"account": {"me"}, "repo": {"acme/sso"}})
+	if code != http.StatusUnprocessableEntity ||
+		!strings.Contains(body, `<a href="https://github.com/orgs/acme/sso" target="_blank" rel="noopener noreferrer">Authorize for SSO</a>`) {
+		t.Fatalf("sso repo = %d\n%s", code, body)
+	}
+	code, body, _ = ts.post("/repos", url.Values{"account": {"me"}, "repo": {"o/down"}})
+	if code != http.StatusUnprocessableEntity || !strings.Contains(body, "could not check o/down with GitHub") {
+		t.Fatalf("unreachable = %d\n%s", code, body)
+	}
+	if repos, _ := ts.db.Repos(ts.ctx); len(repos) != 2 {
+		t.Fatalf("rejected repositories were stored: %+v", repos)
+	}
+}
+
+func TestImportChecksTheRepositoryWithGitHub(t *testing.T) {
+	ts := newTestServer(t)
+	ts.account("me")
+	for _, file := range []string{"nvidia/aicr.json", "thingzio/missing.json"} {
+		path := filepath.Join(ts.importDir, file)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(`{"stale_days":3}`), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if code, body, _ := ts.post("/import", url.Values{"file": {"nvidia/aicr.json"}, "account": {"me"}}); code != http.StatusSeeOther {
+		t.Fatalf("import = %d\n%s", code, body)
+	}
+	if repos, _ := ts.db.Repos(ts.ctx); len(repos) != 1 || repos[0].FullName() != "NVIDIA/aicr" || repos[0].Rules.StaleDays != 3 {
+		t.Fatalf("imported = %+v", repos)
+	}
+	code, body, _ := ts.post("/import", url.Values{"file": {"thingzio/missing.json"}, "account": {"me"}})
+	if code != http.StatusUnprocessableEntity || !strings.Contains(body, "thingzio/missing was not found") {
+		t.Fatalf("missing import = %d\n%s", code, body)
+	}
 }

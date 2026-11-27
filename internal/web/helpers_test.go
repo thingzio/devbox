@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -101,6 +102,34 @@ type testServer struct {
 	client    *http.Client
 	importDir string
 	apiScopes string
+	resolves  []string
+}
+
+// resolveRepo stands in for GitHub: a few names are canonicalized, renamed,
+// missing, SSO-protected, or unreachable; the rest exist as typed.
+func (ts *testServer) resolveRepo(_ context.Context, account, owner, name string) (string, string, error) {
+	ts.mu.Lock()
+	ts.resolves = append(ts.resolves, account+":"+owner+"/"+name)
+	ts.mu.Unlock()
+	switch strings.ToLower(owner + "/" + name) {
+	case "nvidia/aicr":
+		return "NVIDIA", "aicr", nil
+	case "renamed/old":
+		return "renamed", "new", nil
+	case "thingzio/missing":
+		return "", "", &github.StatusError{Status: http.StatusNotFound, Message: "Not Found"}
+	case "acme/sso":
+		return "", "", &github.SSORequiredError{URL: "https://github.com/orgs/acme/sso"}
+	case "o/down":
+		return "", "", &github.TransportError{Err: errors.New("connection refused")}
+	}
+	return owner, name, nil
+}
+
+func (ts *testServer) resolved() []string {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	return append([]string(nil), ts.resolves...)
 }
 
 func newTestServer(t *testing.T) *testServer {
@@ -145,7 +174,7 @@ func newTestServerWith(t *testing.T, configure func(*Options)) *testServer {
 	opts := Options{
 		Store: db, Hub: ts.hub, Auth: mgr, Engine: ts.engine, Metrics: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, "devbox_up 1\n") }),
 		Addr: ts.http.Listener.Addr().String(), DefaultPolling: syncer.DefaultPolling(), ImportDir: ts.importDir,
-		Now: ts.clock, Location: time.UTC,
+		Now: ts.clock, Location: time.UTC, ResolveRepo: ts.resolveRepo,
 	}
 	if configure != nil {
 		configure(&opts)

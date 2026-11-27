@@ -55,6 +55,8 @@ func fakeGitHub(t *testing.T) *httptest.Server {
 			default:
 				w.WriteHeader(http.StatusBadRequest)
 			}
+		case "/repos/o/r":
+			fmt.Fprint(w, `{"name":"r","owner":{"login":"o"}}`)
 		case "/repos/o/r/rules/branches/main":
 			fmt.Fprint(w, `[]`)
 		case "/repos/o/r/branches/main/protection/required_signatures":

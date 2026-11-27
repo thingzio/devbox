@@ -1,6 +1,6 @@
 {{define "content"}}
 <div class="page-head"><div><h1 class="page-title">Settings</h1><p class="sub">Connect GitHub accounts, choose repositories, and set how often DevBox checks them.</p></div></div>
-{{if .Error}}<p class="msg err" role="alert">{{.Error}}</p>{{end}}
+{{if .Error}}<p class="msg err" role="alert">{{.Error}}{{with .ErrorSSOURL}} <a href="{{.}}" target="_blank" rel="noopener noreferrer">Authorize for SSO</a>{{end}}</p>{{end}}
 <div class="settings-grid">
 <nav class="section-nav" aria-label="Settings sections"><a href="#accounts">Accounts</a><a href="#repos">Repositories</a>{{if .Imports}}<a href="#import">Import</a>{{end}}<a href="#polling">Polling</a><a href="#notifications">Notifications</a></nav>
 <div class="settings-main">

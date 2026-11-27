@@ -352,3 +352,21 @@ func (g GitHubReader) TeamMember(ctx context.Context, org, team, login string) (
 	}
 	return out.State == "active", nil
 }
+
+// Repository reads a repository and returns GitHub's own owner and name for
+// it; GitHub answers a renamed repository's old name with its new one.
+func (g GitHubReader) Repository(ctx context.Context, owner, name string) (string, string, error) {
+	var out struct {
+		Name  string `json:"name"`
+		Owner struct {
+			Login string `json:"login"`
+		} `json:"owner"`
+	}
+	if _, err := g.Client.Get(ctx, repoPath(owner, name), &out); err != nil {
+		return "", "", err
+	}
+	if out.Owner.Login == "" || out.Name == "" {
+		return "", "", fmt.Errorf("repository %s/%s: GitHub returned no name", owner, name)
+	}
+	return out.Owner.Login, out.Name, nil
+}

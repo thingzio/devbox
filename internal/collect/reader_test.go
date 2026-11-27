@@ -244,3 +244,30 @@ func TestRESTReads(t *testing.T) {
 		t.Fatalf("ClassicSignatures err = %v", err)
 	}
 }
+
+func TestRepository(t *testing.T) {
+	reader := newReader(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/nvidia/AICR":
+			fmt.Fprint(w, `{"name":"aicr","owner":{"login":"NVIDIA"},"full_name":"NVIDIA/aicr"}`)
+		case "/repos/o/missing":
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprint(w, `{"message":"Not Found"}`)
+		case "/repos/o/empty":
+			fmt.Fprint(w, `{}`)
+		default:
+			t.Errorf("unexpected request %s", r.URL)
+		}
+	})
+	ctx := context.Background()
+	if owner, name, err := reader.Repository(ctx, "nvidia", "AICR"); err != nil || owner != "NVIDIA" || name != "aicr" {
+		t.Fatalf("Repository = %s/%s, %v", owner, name, err)
+	}
+	var se *github.StatusError
+	if _, _, err := reader.Repository(ctx, "o", "missing"); !errors.As(err, &se) || se.Status != http.StatusNotFound {
+		t.Fatalf("missing err = %v", err)
+	}
+	if _, _, err := reader.Repository(ctx, "o", "empty"); err == nil {
+		t.Fatal("a response without a name was accepted")
+	}
+}

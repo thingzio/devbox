@@ -53,6 +53,9 @@ type Options struct {
 	AccessToken    string         // required with AllowRemote: the secret in the startup URL
 	DefaultPolling syncer.Polling // from --poll-interval; a saved UI choice overrides it
 	ImportDir      string
+	// ResolveRepo reads a repository with an account's credentials and returns
+	// GitHub's own owner and name for it, following renames. Required.
+	ResolveRepo func(ctx context.Context, account, owner, name string) (string, string, error)
 	// TestNotification sends a sample desktop notification; nil where the
 	// platform has none, which also hides the setting.
 	TestNotification func(ctx context.Context) error
@@ -91,6 +94,9 @@ func New(o Options) (*Server, error) {
 	}
 	if o.AllowRemote && o.AccessToken == "" {
 		return nil, errors.New("web: remote access needs an access token")
+	}
+	if o.ResolveRepo == nil {
+		return nil, errors.New("web: a repository resolver is required")
 	}
 	_, port, err := net.SplitHostPort(o.Addr)
 	if err != nil {

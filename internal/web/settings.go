@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/thingzio/devbox/internal/auth"
+	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/hub"
 	"github.com/thingzio/devbox/internal/notify"
 	"github.com/thingzio/devbox/internal/rules"
@@ -148,14 +149,16 @@ var (
 	importPattern = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9._-]{1,100})\.json$`)
 )
 
-// parseRepoReference accepts owner/name or any github.com URL inside the repository.
+// parseRepoReference accepts owner/name, any github.com URL inside the
+// repository, or a github.com SSH remote (git@github.com:owner/name.git,
+// ssh://git@github.com/owner/name).
 func parseRepoReference(input string) (string, string, error) {
 	s := strings.TrimSpace(input)
-	for _, prefix := range []string{"https://", "http://"} {
+	for _, prefix := range []string{"https://", "http://", "git+ssh://", "ssh://"} {
 		s = strings.TrimPrefix(s, prefix)
 	}
 	s = strings.TrimPrefix(s, "www.")
-	if rest, ok := strings.CutPrefix(s, "github.com/"); ok {
+	if rest, ok := cutAnyPrefix(s, "github.com/", "git@github.com:", "git@github.com/"); ok {
 		s = rest
 	} else if first, _, _ := strings.Cut(s, "/"); strings.ContainsAny(first, ".:@") {
 		return "", "", fmt.Errorf("%q is not a github.com repository", input)
@@ -175,6 +178,15 @@ func parseRepoReference(input string) (string, string, error) {
 		return "", "", fmt.Errorf("%q is not a valid owner/name", input)
 	}
 	return owner, name, nil
+}
+
+func cutAnyPrefix(s string, prefixes ...string) (string, bool) {
+	for _, p := range prefixes {
+		if rest, ok := strings.CutPrefix(s, p); ok {
+			return rest, true
+		}
+	}
+	return s, false
 }
 
 type accountView struct {
@@ -218,6 +230,7 @@ type settingsView struct {
 	ClientIDConfigured bool
 	NotifyAvailable    bool
 	NotifyOn           bool
+	ErrorSSOURL        string // with Error: the page that authorizes the token for SSO
 }
 
 func (s *Server) buildSettings(ctx context.Context) (settingsView, error) {
@@ -311,6 +324,31 @@ func (s *Server) reject(w http.ResponseWriter, r *http.Request, err error) {
 	s.renderSettings(w, r, http.StatusUnprocessableEntity, msg)
 }
 
+// rejectRepo explains why GitHub would not show a repository to the account.
+func (s *Server) rejectRepo(w http.ResponseWriter, r *http.Request, account, input string, err error) {
+	s.o.Log.Info("repository check failed", "account", account, "err", err)
+	owner, name, _ := parseRepoReference(input)
+	repo := owner + "/" + name
+	var se *github.StatusError
+	var sso *github.SSORequiredError
+	msg := fmt.Sprintf("could not check %s with GitHub: %v; try again.", repo, err)
+	ssoURL := ""
+	switch {
+	case errors.As(err, &se) && (se.Status == http.StatusNotFound || se.Status == http.StatusForbidden):
+		msg = fmt.Sprintf("%s was not found, or @%s cannot read it. For an organization's repository, check that the DevBox GitHub App is installed there.", repo, account)
+	case errors.As(err, &sso):
+		msg = fmt.Sprintf("%s belongs to an organization that requires authorizing @%s's token for SSO.", repo, account)
+		ssoURL = githubURL(sso.URL)
+	}
+	v, berr := s.buildSettings(r.Context())
+	if berr != nil {
+		s.serverError(w, berr)
+		return
+	}
+	v.Error, v.ErrorSSOURL = msg, ssoURL
+	s.render(w, r, "settings", http.StatusUnprocessableEntity, pageData{Title: "Settings", Body: v})
+}
+
 func (s *Server) backToSettings(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/settings", http.StatusSeeOther)
 }
@@ -375,6 +413,10 @@ func (s *Server) handleAddRepo(w http.ResponseWriter, r *http.Request) {
 	owner, name, err := parseRepoReference(r.PostFormValue("repo"))
 	if err != nil {
 		s.reject(w, r, err)
+		return
+	}
+	if owner, name, err = s.o.ResolveRepo(r.Context(), acct.Login, owner, name); err != nil {
+		s.rejectRepo(w, r, acct.Login, r.PostFormValue("repo"), err)
 		return
 	}
 	if _, err := s.o.Store.AddRepo(r.Context(), acct.ID, owner, name, rules.Default(), s.o.Now()); err != nil {
@@ -489,11 +531,16 @@ func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
 		s.reject(w, r, err)
 		return
 	}
-	if _, err := s.o.Store.AddRepo(r.Context(), acct.ID, m[1], m[2], rl, s.o.Now()); err != nil {
+	owner, name, err := s.o.ResolveRepo(r.Context(), acct.Login, m[1], m[2])
+	if err != nil {
+		s.rejectRepo(w, r, acct.Login, m[1]+"/"+m[2], err)
+		return
+	}
+	if _, err := s.o.Store.AddRepo(r.Context(), acct.ID, owner, name, rl, s.o.Now()); err != nil {
 		s.reject(w, r, err)
 		return
 	}
-	s.o.Log.Info("repository imported", "repo", m[1]+"/"+m[2], "account", acct.Login, "file", file)
+	s.o.Log.Info("repository imported", "repo", owner+"/"+name, "account", acct.Login, "file", file)
 	s.o.Engine.ReposChanged()
 	s.backToSettings(w, r)
 }
