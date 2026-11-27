@@ -2,18 +2,22 @@ package web
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/thingzio/devbox/internal/github"
 	"github.com/thingzio/devbox/internal/hub"
+	"github.com/thingzio/devbox/internal/store"
 	"github.com/thingzio/devbox/internal/syncer"
 )
 
@@ -351,5 +355,26 @@ func TestQueueRowsCarryKeyboardHooks(t *testing.T) {
 		`<kbd>j</kbd>`, `<kbd>o</kbd>`)
 	if code, js := ts.get("/static/app.js"); code != http.StatusOK || !strings.Contains(js, "data-nav") {
 		t.Fatalf("app.js = %d, missing keyboard navigation", code)
+	}
+}
+
+func TestCancelledRequestsAreNotLoggedAsErrors(t *testing.T) {
+	db, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "d.db"), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var logs bytes.Buffer
+	srv, err := New(Options{Store: db, Hub: hub.New(), Engine: &fakeEngine{polling: syncer.DefaultPolling()}, Addr: "127.0.0.1:8484",
+		Log:         slog.New(slog.NewTextHandler(&logs, nil)),
+		ResolveRepo: func(context.Context, string, string, string) (string, string, error) { return "", "", nil }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // the browser navigated away mid-request
+	srv.buildStatus(ctx)
+	if strings.Contains(logs.String(), "level=ERROR") {
+		t.Fatalf("a cancelled request was logged as an error:\n%s", logs.String())
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/thingzio/devbox/internal/auth"
 	"github.com/thingzio/devbox/internal/github"
@@ -19,6 +20,7 @@ import (
 	"github.com/thingzio/devbox/internal/notify"
 	"github.com/thingzio/devbox/internal/rules"
 	"github.com/thingzio/devbox/internal/store"
+	"github.com/thingzio/devbox/internal/suggest"
 	"github.com/thingzio/devbox/internal/syncer"
 )
 
@@ -240,6 +242,33 @@ type settingsView struct {
 
 type suggestionView struct{ Repo, URL, Reason string }
 
+// suggestTTL is how long an account's suggestions are reused, so returning
+// after adding one does not search GitHub again; Suggest repositories refreshes.
+const suggestTTL = 10 * time.Minute
+
+type suggestEntry struct {
+	at   time.Time
+	list []suggest.Suggestion
+}
+
+func (s *Server) suggestions(ctx context.Context, login string, refresh bool) ([]suggest.Suggestion, error) {
+	now := s.o.Now()
+	s.suggestMu.Lock()
+	e, ok := s.suggested[login]
+	s.suggestMu.Unlock()
+	if ok && !refresh && now.Sub(e.at) < suggestTTL {
+		return e.list, nil
+	}
+	list, err := s.o.SuggestRepos(ctx, login)
+	if err != nil {
+		return nil, err
+	}
+	s.suggestMu.Lock()
+	s.suggested[login] = suggestEntry{at: now, list: list}
+	s.suggestMu.Unlock()
+	return list, nil
+}
+
 // fillSuggestions answers ?suggest=<login>: repositories that account reviews
 // in but does not watch. It runs only when asked, since it searches GitHub.
 func (s *Server) fillSuggestions(r *http.Request, v *settingsView) {
@@ -252,12 +281,19 @@ func (s *Server) fillSuggestions(r *http.Request, v *settingsView) {
 		return
 	}
 	v.SuggestFor = login
-	found, err := s.o.SuggestRepos(r.Context(), login)
+	found, err := s.suggestions(r.Context(), login, r.URL.Query().Get("refresh") != "")
 	if err != nil {
 		s.o.Log.Warn("repository suggestions failed", "account", login, "err", err)
 		v.SuggestMessage = fmt.Sprintf("DevBox could not suggest repositories for @%s: %v", login, err)
 		return
 	}
+	watched := map[string]bool{}
+	for _, repo := range v.Repos {
+		if repo.Account == login {
+			watched[strings.ToLower(repo.Name)] = true
+		}
+	}
+	found = slices.DeleteFunc(slices.Clone(found), func(f suggest.Suggestion) bool { return watched[strings.ToLower(f.Owner+"/"+f.Name)] })
 	if len(found) == 0 {
 		v.SuggestMessage = fmt.Sprintf("No suggestions for @%s: no open review requests or recent reviews in repositories you can push to and do not already watch.", login)
 		return

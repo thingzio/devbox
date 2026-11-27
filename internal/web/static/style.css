@@ -369,3 +369,6 @@ kbd {
 .suggestions li:last-child { border-bottom: 0; }
 .suggestion-main { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; overflow-wrap: anywhere; }
 .suggestion-main a { font-family: var(--font-mono); font-weight: 600; }
+
+/* Busy forms */
+button.busy { cursor: progress; opacity: 0.7; }

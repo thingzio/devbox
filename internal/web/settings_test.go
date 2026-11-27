@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -353,7 +354,9 @@ func TestAddRepoChecksTheRepositoryWithGitHub(t *testing.T) {
 			t.Fatalf("%s stored as %+v, want GitHub's name %s", in, repos, want)
 		}
 	}
-	if got := ts.resolved(); len(got) != 2 || got[0] != "me:nvidia/aicr" {
+	got := ts.resolved()
+	slices.Sort(got)
+	if !slices.Equal(got, []string{"me:nvidia/aicr", "me:renamed/old"}) {
 		t.Fatalf("resolver calls = %v", got)
 	}
 

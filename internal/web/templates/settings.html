@@ -17,18 +17,18 @@
 {{if .ClientIDConfigured}}<div id="device"><button class="btn" type="button" hx-post="/accounts/device" hx-target="#device" hx-swap="innerHTML">Sign in with GitHub</button></div>
 <div class="or-divider">or</div>
 {{else}}<p class="muted small">Device sign-in needs a GitHub App client ID (set <code>DEVBOX_GITHUB_CLIENT_ID</code>); add a classic token instead.</p>{{end}}
-<form method="post" action="/accounts/pat" class="row"><label class="field grow"><span class="field-cap">Classic token</span><input type="password" name="token" autocomplete="off" placeholder="ghp_… with the repo and read:org scopes" required></label><button class="btn" type="submit">Add token</button></form>
+<form method="post" action="/accounts/pat" class="row" data-busy="Checking…"><label class="field grow"><span class="field-cap">Classic token</span><input type="password" name="token" autocomplete="off" placeholder="ghp_… with the repo and read:org scopes" required></label><button class="btn" type="submit">Add token</button></form>
 </section>
 
 <section id="repos" class="card"><div class="card-head"><h2>Repositories</h2><span class="muted small">{{len .Repos}} monitored</span></div>
-{{if .AccountLogins}}<form method="post" action="/repos" class="row">
+{{if .AccountLogins}}<form method="post" action="/repos" class="row" data-busy="Adding…">
 <label class="field grow"><span class="field-cap">Repository</span><input name="repo" placeholder="owner/name or GitHub URL" required></label>
 <label class="field"><span class="field-cap">Account</span><select name="account">{{range .AccountLogins}}<option value="{{.}}">@{{.}}</option>{{end}}</select></label>
 <button class="btn" type="submit">Add</button></form>
-{{if .CanSuggest}}<form method="get" action="/settings#repos" class="row"><label class="field"><span class="field-cap">Not sure which? Suggest from your reviews</span><select name="suggest">{{range .AccountLogins}}<option value="{{.}}"{{if eq . $.SuggestFor}} selected{{end}}>@{{.}}</option>{{end}}</select></label><button class="btn secondary" type="submit">Suggest repositories</button></form>{{end}}
+{{if .CanSuggest}}<form method="get" action="/settings#repos" class="row" data-busy="Searching…"><input type="hidden" name="refresh" value="1"><label class="field"><span class="field-cap">Not sure which? Suggest from your reviews</span><select name="suggest">{{range .AccountLogins}}<option value="{{.}}"{{if eq . $.SuggestFor}} selected{{end}}>@{{.}}</option>{{end}}</select></label><button class="btn secondary" type="submit">Suggest repositories</button></form>{{end}}
 {{with .SuggestMessage}}<p class="muted small">{{.}}</p>{{end}}
 {{if .Suggestions}}<h3>Suggested for @{{.SuggestFor}}</h3><ul class="suggestions">{{range .Suggestions}}<li><div class="suggestion-main"><a href="{{.URL}}" target="_blank" rel="noopener noreferrer">{{.Repo}}</a><span class="muted small">{{.Reason}}</span></div>
-<form method="post" action="/repos"><input type="hidden" name="account" value="{{$.SuggestFor}}"><input type="hidden" name="repo" value="{{.Repo}}"><input type="hidden" name="suggest" value="{{$.SuggestFor}}"><button class="btn sm" type="submit">Add</button></form></li>{{end}}</ul>{{end}}
+<form method="post" action="/repos" data-busy="Adding…"><input type="hidden" name="account" value="{{$.SuggestFor}}"><input type="hidden" name="repo" value="{{.Repo}}"><input type="hidden" name="suggest" value="{{$.SuggestFor}}"><button class="btn sm" type="submit">Add</button></form></li>{{end}}</ul>{{end}}
 {{else}}<p class="muted">Add an account first, then choose repositories for it to monitor.</p>{{end}}
 <ul class="repo-list">{{range .Repos}}<li><details class="repo"><summary><strong class="mono">{{.Name}}</strong><span class="tag">@{{.Account}}</span>{{if .Enabled}}<span class="pill ok">enabled</span>{{else}}<span class="pill">disabled</span>{{end}}{{if .LastError}}<span class="flag">last error: {{.LastError}}</span>{{end}}</summary>
 <div class="repo-body">
@@ -42,7 +42,7 @@
 </section>
 
 {{if .Imports}}<section id="import" class="card"><div class="card-head"><h2>Import from maintainer-sweep</h2></div>
-{{if .AccountLogins}}<ul class="import-list">{{range .Imports}}<li><form method="post" action="/import" class="row"><input type="hidden" name="file" value="{{.}}"><span class="mono grow">{{.}}</span>
+{{if .AccountLogins}}<ul class="import-list">{{range .Imports}}<li><form method="post" action="/import" class="row" data-busy="Importing…"><input type="hidden" name="file" value="{{.}}"><span class="mono grow">{{.}}</span>
 <select name="account" aria-label="Account">{{range $.AccountLogins}}<option value="{{.}}">@{{.}}</option>{{end}}</select><button class="btn secondary sm" type="submit">Import</button></form></li>{{end}}</ul>
 {{else}}<p>Found {{range $i, $f := .Imports}}{{if $i}}, {{end}}<code>{{$f}}</code>{{end}}. Add an account above to import {{if eq (len .Imports) 1}}it{{else}}them{{end}}.</p>{{end}}
 </section>{{end}}
@@ -54,7 +54,7 @@
 
 <section id="notifications" class="card"><div class="card-head"><h2>Notifications</h2></div>
 {{if .NotifyAvailable}}<form method="post" action="/settings/notifications" class="row"><label class="field"><span class="field-cap">Desktop notifications</span><select name="enabled"><option value="off"{{if not .NotifyOn}} selected{{end}}>Off</option><option value="on"{{if .NotifyOn}} selected{{end}}>On</option></select></label><button class="btn" type="submit">Save</button></form>
-<form method="post" action="/settings/notifications/test" class="row"><button class="btn secondary" type="submit">Send a test notification</button></form>
+<form method="post" action="/settings/notifications/test" class="row" data-busy="Sending…"><button class="btn secondary" type="submit">Send a test notification</button></form>
 <p class="muted small">When on, DevBox notifies you when a pull request becomes new work for you: it enters an action bucket other than Bot PRs. Several at once arrive as one notification. macOS shows them as coming from Script Editor; allow them in System Settings → Notifications.</p>
 {{else}}<p class="muted small">Desktop notifications are available on macOS.</p>{{end}}
 </section>

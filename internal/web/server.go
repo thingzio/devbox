@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/thingzio/devbox/internal/auth"
@@ -73,6 +74,9 @@ type Server struct {
 	pages        map[string]*template.Template
 	allowedHosts map[string]bool
 	session      string // expected session cookie; empty when no access token is required
+
+	suggestMu sync.Mutex
+	suggested map[string]suggestEntry // last suggestions per account, reused for suggestTTL
 }
 
 var funcs = template.FuncMap{"join": strings.Join, "profile": profileURL}
@@ -110,7 +114,7 @@ func New(o Options) (*Server, error) {
 	for _, h := range []string{"localhost", "127.0.0.1", "[::1]"} {
 		hosts[h+":"+port] = true
 	}
-	srv := &Server{o: o, pages: pages, allowedHosts: hosts}
+	srv := &Server{o: o, pages: pages, allowedHosts: hosts, suggested: map[string]suggestEntry{}}
 	if o.AccessToken != "" {
 		srv.session = sessionValue(o.AccessToken)
 	}

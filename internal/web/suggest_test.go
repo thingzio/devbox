@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/thingzio/devbox/internal/suggest"
 )
@@ -77,5 +78,56 @@ func TestSuggestRepositoriesMessages(t *testing.T) {
 				t.Fatalf("suggest = %d, want %q in\n%s", code, tc.want, body)
 			}
 		})
+	}
+}
+
+func TestSuggestionsAreRememberedBetweenAdds(t *testing.T) {
+	ts, asked := suggestingServer(t, []suggest.Suggestion{
+		{Owner: "acme", Name: "api", Requested: 2},
+		{Owner: "acme", Name: "web", Reviewed: 4},
+	}, nil)
+	ts.account("me")
+	_, body := ts.get("/settings")
+	assertContains(t, "settings", body, `<input type="hidden" name="refresh" value="1">`)
+
+	ts.get("/settings?suggest=me&refresh=1")
+	if code, _, _ := ts.post("/repos", url.Values{"account": {"me"}, "repo": {"acme/api"}, "suggest": {"me"}}); code != http.StatusSeeOther {
+		t.Fatalf("add = %d", code)
+	}
+	_, body = ts.get("/settings?suggest=me")
+	if len(*asked) != 1 {
+		t.Fatalf("searched GitHub %d times; returning after an add should reuse the list", len(*asked))
+	}
+	if strings.Contains(body, `name="repo" value="acme/api"`) || !strings.Contains(body, `name="repo" value="acme/web"`) {
+		t.Fatalf("remembered list should drop the added repository:\n%s", body)
+	}
+
+	ts.get("/settings?suggest=me&refresh=1")
+	if len(*asked) != 2 {
+		t.Fatalf("Suggest repositories did not search again: %d", len(*asked))
+	}
+	ts.setNow(t0.Add(11 * time.Minute))
+	ts.get("/settings?suggest=me")
+	if len(*asked) != 3 {
+		t.Fatalf("an old list was reused after it expired: %d", len(*asked))
+	}
+}
+
+func TestSlowFormsShowTheyAreBusy(t *testing.T) {
+	ts, _ := suggestingServer(t, []suggest.Suggestion{{Owner: "acme", Name: "api", Requested: 1}}, nil)
+	ts.account("me")
+	_, body := ts.get("/settings?suggest=me")
+	for _, want := range []string{
+		`<form method="post" action="/repos" class="row" data-busy="Adding…">`,
+		`<form method="get" action="/settings#repos" class="row" data-busy="Searching…">`,
+		`<form method="post" action="/repos" data-busy="Adding…">`,
+		`<form method="post" action="/accounts/pat" class="row" data-busy="Checking…">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("settings missing %q", want)
+		}
+	}
+	if code, js := ts.get("/static/app.js"); code != http.StatusOK || !strings.Contains(js, "data-busy") {
+		t.Fatalf("app.js = %d, missing the busy handler", code)
 	}
 }

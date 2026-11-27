@@ -382,7 +382,9 @@ func (s *Server) buildStatus(ctx context.Context) statusView {
 	}
 	statuses, err := s.o.Store.RepoStatuses(ctx)
 	if err != nil {
-		s.o.Log.Error("repo statuses", "err", err)
+		if ctx.Err() == nil { // a cancelled request means the browser left, not a fault
+			s.o.Log.Error("repo statuses", "err", err)
+		}
 		return v
 	}
 	var lastPoll *time.Time

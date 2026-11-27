@@ -104,6 +104,41 @@
     }
   });
 
+  // Forms that wait on GitHub (data-busy) show their button as busy and ignore
+  // repeat submits. The button stays enabled: a disabled submitter's
+  // name and value would be left out of the request.
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    var label = form.getAttribute("data-busy");
+    if (!label) {
+      return;
+    }
+    if (form.getAttribute("aria-busy") === "true") {
+      event.preventDefault();
+      return;
+    }
+    form.setAttribute("aria-busy", "true");
+    var button = event.submitter || form.querySelector("button");
+    if (button) {
+      button.setAttribute("data-label", button.textContent);
+      button.classList.add("busy");
+      button.textContent = label;
+    }
+  });
+  // Going back restores the page from cache with the busy state still on.
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted) {
+      return;
+    }
+    document.querySelectorAll("form[aria-busy]").forEach(function (form) {
+      form.removeAttribute("aria-busy");
+    });
+    document.querySelectorAll("button.busy").forEach(function (button) {
+      button.classList.remove("busy");
+      button.textContent = button.getAttribute("data-label");
+    });
+  });
+
   document.addEventListener("click", function (event) {
     var button = event.target.closest("button.copy");
     if (!button || !navigator.clipboard) {
