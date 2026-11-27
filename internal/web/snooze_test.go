@@ -91,3 +91,12 @@ func TestSnoozeRejectsBadInput(t *testing.T) {
 		t.Fatalf("foreign next = %d → %q", code, h.Get("Location"))
 	}
 }
+
+func TestUnsnoozeRejectsBadInput(t *testing.T) {
+	ts := newTestServer(t)
+	for _, form := range []url.Values{{"repo_id": {"x"}, "number": {"1"}}, {"repo_id": {"1"}, "number": {"0"}}} {
+		if code, _, _ := ts.post("/unsnooze", form); code != http.StatusBadRequest {
+			t.Errorf("unsnooze %v = %d, want 400", form, code)
+		}
+	}
+}

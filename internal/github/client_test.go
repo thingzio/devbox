@@ -430,3 +430,19 @@ func TestNewRejectsBadURL(t *testing.T) {
 		}
 	}
 }
+
+func TestErrorMessagesNameTheFix(t *testing.T) {
+	cases := map[string]error{
+		"github: HTTP 404: Not Found": &StatusError{Status: 404, Message: "Not Found"},
+		"github: organization SAML SSO requires authorizing this token at https://github.com/orgs/o/sso":  &SSORequiredError{URL: "https://github.com/orgs/o/sso"},
+		"github: organization SAML SSO requires authorizing this token":                                   &SSORequiredError{},
+		`github: organization "acme" restricts OAuth App access; request approval or use a classic token`: &OAuthRestrictedError{Org: "acme"},
+		"github: graphql: one; two":             &GraphQLError{Messages: []string{"one", "two"}},
+		"github: transport: connection refused": &TransportError{Err: errors.New("connection refused")},
+	}
+	for want, err := range cases {
+		if err.Error() != want {
+			t.Errorf("Error() = %q, want %q", err.Error(), want)
+		}
+	}
+}

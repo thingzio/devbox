@@ -1,6 +1,8 @@
 package web
 
 import (
+	"bytes"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -72,5 +74,24 @@ func TestRemoteWithoutTokenIsRefused(t *testing.T) {
 	_, err := New(Options{AllowRemote: true, Addr: "0.0.0.0:8484"})
 	if err == nil || !strings.Contains(err.Error(), "access token") {
 		t.Fatalf("New = %v", err)
+	}
+}
+
+func TestDebugRequestLogsOmitTheQueryString(t *testing.T) {
+	var logs bytes.Buffer
+	ts := newTestServerWith(t, func(o *Options) {
+		o.AllowRemote, o.AccessToken = true, "s3cret"
+		o.Log = slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	})
+	ts.get("/?token=s3cret")
+	ts.get("/nope?token=wrong")
+	out := logs.String()
+	if strings.Contains(out, "s3cret") || strings.Contains(out, "wrong") {
+		t.Fatalf("access token in the request log:\n%s", out)
+	}
+	for _, want := range []string{"path=/ status=303", "path=/nope status=401"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("request log missing %q:\n%s", want, out)
+		}
 	}
 }

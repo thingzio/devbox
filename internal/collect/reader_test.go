@@ -271,3 +271,15 @@ func TestRepository(t *testing.T) {
 		t.Fatal("a response without a name was accepted")
 	}
 }
+
+func TestDiffAsksForTheDiffFormat(t *testing.T) {
+	reader := newReader(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/repos/o/r/compare/base...head" || r.Header.Get("Accept") != "application/vnd.github.diff" {
+			t.Errorf("diff request = %s Accept %q", r.URL, r.Header.Get("Accept"))
+		}
+		fmt.Fprint(w, "diff --git a/x b/x\n")
+	})
+	if got, err := reader.Diff(context.Background(), "o", "r", "base", "head"); err != nil || string(got) != "diff --git a/x b/x\n" {
+		t.Fatalf("Diff = %q, %v", got, err)
+	}
+}
